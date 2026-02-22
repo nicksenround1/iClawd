@@ -43,3 +43,8 @@
 - [ ] 提供 docker-compose.yml 一键 Docker 部署方案
 - [ ] 首页导航更新：添加"安装指南"入口
 - [ ] 驾驶舱页面：当检测到运行在 localhost 时显示"本地模式"标识
+
+## Bug 修复（v3.1）
+
+- [ ] 修复 Install.tsx 中不存在的 GitHub 仓库地址（改为下载压缩包方式）
+- [ ] 修复 Home.tsx 中 GitHub 按钮链接
