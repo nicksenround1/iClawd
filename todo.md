@@ -60,3 +60,9 @@
 - [x] 移除 @builder.io/vite-plugin-jsx-loc（与 Vite 7 不兼容，导致 npm install 失败）
 - [x] 添加 start:local 脚本（用户按 README 执行 npm run start:local 报错）
 - [x] 从 vite.config.ts 中移除 jsxLocPlugin 导入和使用
+
+## 本地运行 Bug 修复（v3.4）
+
+- [x] 修复 VITE_ANALYTICS_ENDPOINT/VITE_ANALYTICS_WEBSITE_ID 未定义导致 URIError 崩溃（从 index.html 移除 analytics 脚本）
+- [x] 修复 OAUTH_SERVER_URL 未配置错误（改为信息日志，不再报 ERROR）
+- [x] 实现本地模式：OAUTH_SERVER_URL 未配置时自动使用内置 local-user，所有功能正常工作
