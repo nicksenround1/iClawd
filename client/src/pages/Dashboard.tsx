@@ -117,17 +117,11 @@ function HeartbeatIndicator({ online, loading }: { online: boolean; loading: boo
 export default function Dashboard() {
   const [restarting, setRestarting] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  // Browser-side gateway ping state (avoids server-side localhost access issue)
+  const [gwOnline, setGwOnline] = useState<boolean | null>(null);
+  const [gwLoading, setGwLoading] = useState(false);
 
   // ── Data fetching ──
-  const {
-    data: gatewayStatus,
-    isLoading: gwLoading,
-    refetch: refetchGw,
-  } = trpc.dashboard.gatewayStatus.useQuery(undefined, {
-    refetchInterval: 30_000,
-    retry: 1,
-  });
-
   const {
     data: usageData,
     isLoading: usageLoading,
@@ -145,7 +139,7 @@ export default function Dashboard() {
     retry: 1,
   });
 
-  const { data: botConfig } = trpc.dashboard.getConfig.useQuery(undefined, { retry: 1 });
+  const { data: botConfig, refetch: refetchConfig } = trpc.dashboard.getConfig.useQuery(undefined, { retry: 1 });
 
   const addUsageMutation = trpc.dashboard.addTokenUsage.useMutation({
     onSuccess: (data) => {
@@ -155,20 +149,51 @@ export default function Dashboard() {
     },
   });
 
+  // ── Browser-side Gateway ping (runs in browser, can reach localhost) ──
+  const pingGateway = async (url: string) => {
+    if (!url || url === "未配置") { setGwOnline(false); return; }
+    setGwLoading(true);
+    try {
+      await fetch(`${url}/health`, { mode: "no-cors", signal: AbortSignal.timeout(4000) });
+      setGwOnline(true);
+    } catch {
+      setGwOnline(false);
+    } finally {
+      setGwLoading(false);
+    }
+  };
+
+  const gatewayUrl = botConfig?.gatewayUrl ?? "未配置";
+
+  // Ping on mount and whenever config changes
+  useEffect(() => {
+    if (botConfig?.gatewayUrl) {
+      void pingGateway(botConfig.gatewayUrl);
+    }
+  }, [botConfig?.gatewayUrl]);
+
+  // Auto-refresh every 30s
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (botConfig?.gatewayUrl) void pingGateway(botConfig.gatewayUrl);
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [botConfig?.gatewayUrl]);
+
   // ── Derived state ──
-  const isOnline = gatewayStatus?.online ?? false;
-  const isConfigured = (gatewayStatus as { configured?: boolean } | undefined)?.configured ?? false;
+  const isOnline = gwOnline === true;
+  const isConfigured = !!botConfig?.gatewayUrl;
   const tokenChart = usageData?.chart ?? [];
   const todayTokens = todayStats?.totalTokens ?? 0;
   const todayCostCents = todayStats?.costCents ?? 0;
   const activeModel = botConfig?.activeModel ?? "—";
-  const gatewayUrl = botConfig?.gatewayUrl ?? "未配置";
 
   // ── Handlers ──
   const handleRefreshAll = () => {
-    refetchGw();
+    if (botConfig?.gatewayUrl) void pingGateway(botConfig.gatewayUrl);
     refetchUsage();
     refetchStats();
+    refetchConfig();
     setLastRefresh(new Date());
     toast.info("正在刷新所有数据...");
   };
@@ -182,7 +207,7 @@ export default function Dashboard() {
     toast.info("正在向 Gateway 发送重启信号...", { duration: 2000 });
     setTimeout(() => {
       setRestarting(false);
-      refetchGw();
+      if (botConfig?.gatewayUrl) void pingGateway(botConfig.gatewayUrl);
       toast.success("重启信号已发送，正在重新检测状态...");
     }, 3000);
   };
@@ -287,7 +312,7 @@ export default function Dashboard() {
                   className="text-xs mt-1"
                   style={{ color: "oklch(0.65 0.22 30)", fontFamily: "'JetBrains Mono', monospace" }}
                 >
-                  {(gatewayStatus as { error?: string } | undefined)?.error ?? "无法连接到 Gateway"}
+                  {gwOnline === false ? "无法连接到 Gateway，请检查服务是否运行" : "连接中..."}
                 </div>
               )}
             </div>

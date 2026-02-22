@@ -29,3 +29,8 @@
 - [x] Models 页面新增（模型配对 + API Key 加密保险箱）
 - [x] SetupWizard 重构（Gateway URL + Token + 模型 + 人格三步引导）
 - [x] vitest 单元测试（22 个测试全部通过）
+
+## Bug 修复
+
+- [x] 修复 SetupWizard Gateway 连接测试：改为 no-cors 模式浏览器端直接 fetch，支持本地 localhost Gateway
+- [x] 修复 Dashboard + Layout 的 Gateway 心跳检测：全部改为浏览器端直接 ping，删除服务端代理

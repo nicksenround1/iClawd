@@ -42,11 +42,29 @@ export default function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // 真实 Gateway 状态
-  const { data: gatewayStatus, isLoading: gwLoading } = trpc.dashboard.gatewayStatus.useQuery(undefined, {
-    refetchInterval: 30_000,
-    retry: 1,
-  });
+  // 浏览器端直接 ping Gateway（支持 localhost）
+  const [gwOnline, setGwOnline] = useState<boolean | null>(null);
+  const { data: botConfig } = trpc.dashboard.getConfig.useQuery(undefined, { retry: 1 });
+
+  const pingGateway = async (url: string) => {
+    try {
+      await fetch(`${url}/health`, { mode: "no-cors", signal: AbortSignal.timeout(4000) });
+      setGwOnline(true);
+    } catch {
+      setGwOnline(false);
+    }
+  };
+
+  useEffect(() => {
+    if (botConfig?.gatewayUrl) void pingGateway(botConfig.gatewayUrl);
+  }, [botConfig?.gatewayUrl]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (botConfig?.gatewayUrl) void pingGateway(botConfig.gatewayUrl);
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [botConfig?.gatewayUrl]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -59,9 +77,9 @@ export default function Layout({ children }: LayoutProps) {
   const formatDate = (date: Date) =>
     date.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
 
-  const isOnline = gatewayStatus?.online ?? false;
-  const botName = (gatewayStatus as { botName?: string } | undefined)?.botName ?? "ClawDBot";
-  const botEmoji = (gatewayStatus as { botEmoji?: string } | undefined)?.botEmoji ?? "🦞";
+  const isOnline = gwOnline === true;
+  const botName = botConfig?.botName ?? "ClawDBot";
+  const botEmoji = botConfig?.botEmoji ?? "🦞";
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "oklch(0.085 0.015 240)" }}>
@@ -143,7 +161,7 @@ export default function Layout({ children }: LayoutProps) {
         {!collapsed && (
           <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: "1px solid oklch(0.22 0.03 230)" }}>
             <div className="flex items-center gap-2 mb-2">
-              {gwLoading ? (
+              {gwOnline === null ? (
                 <Loader2 size={10} className="animate-spin" style={{ color: "oklch(0.52 0.05 215)" }} />
               ) : isOnline ? (
                 <div className="status-dot heartbeat-online flex-shrink-0" style={{ background: "oklch(0.82 0.22 140)" }} />
@@ -157,7 +175,7 @@ export default function Layout({ children }: LayoutProps) {
                   fontFamily: "'JetBrains Mono', monospace",
                 }}
               >
-                {gwLoading ? "检测中..." : isOnline ? "Gateway 在线" : "Gateway 离线"}
+                {gwOnline === null ? "检测中..." : isOnline ? "Gateway 在线" : "Gateway 离线"}
               </span>
             </div>
             <div className="text-xs" style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}>
@@ -206,14 +224,14 @@ export default function Layout({ children }: LayoutProps) {
                 fontFamily: "'JetBrains Mono', monospace",
               }}
             >
-              {gwLoading ? (
+              {gwOnline === null ? (
                 <Loader2 size={10} className="animate-spin" />
               ) : isOnline ? (
                 <Wifi size={10} />
               ) : (
                 <WifiOff size={10} />
               )}
-              {gwLoading ? "CHECKING" : isOnline ? "GATEWAY ONLINE" : "GATEWAY OFFLINE"}
+              {gwOnline === null ? "CHECKING" : isOnline ? "GATEWAY ONLINE" : "GATEWAY OFFLINE"}
             </div>
             <div
               className="text-xs px-2 py-1 rounded-sm flex items-center gap-1.5"

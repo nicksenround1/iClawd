@@ -193,30 +193,31 @@ export default function SetupWizard() {
     await new Promise((r) => setTimeout(r, 600));
 
     try {
-      const res = await fetch(`${gatewayUrl}/health`, {
+      // Use no-cors mode to probe if the server is reachable at all.
+      // With no-cors, a successful fetch (opaque response) means the server
+      // is running; a network error means it's unreachable.
+      await fetch(`${gatewayUrl}/health`, {
+        mode: "no-cors",
         signal: AbortSignal.timeout(5000),
-      }).catch(() => null);
-
-      if (res?.ok) {
-        setGatewayLogs((prev) => [
-          ...prev,
-          "✓ Gateway 连接成功",
-          "✓ OpenClawd 服务正在运行",
-        ]);
-        toast.success("Gateway 连接成功！");
-      } else {
-        setGatewayLogs((prev) => [
-          ...prev,
-          "→ Gateway 未响应，保存配置继续...",
-          "→ 稍后可在驾驶舱中验证连接状态",
-        ]);
-      }
-    } catch {
+      });
+      // If we get here, the server responded (opaque response = server is up)
       setGatewayLogs((prev) => [
         ...prev,
-        "→ 无法直接访问 Gateway（跨域限制）",
-        "→ 配置已保存，将在驾驶舱中验证连接",
+        "✓ Gateway 服务器已响应",
+        "✓ OpenClawd 正在运行，配置已保存",
       ]);
+      toast.success("Gateway 连接成功！");
+    } catch {
+      // Network error = server not reachable
+      setGatewayLogs((prev) => [
+        ...prev,
+        "✗ 无法连接到 Gateway，请检查：",
+        "  1. OpenClawd 是否已启动（pnpm start）",
+        `  2. 地址是否正确：${gatewayUrl}`,
+        "  3. 防火墙是否放行该端口",
+        "→ 配置已保存，可修正后重试",
+      ]);
+      toast.warning("Gateway 未响应，请检查服务是否运行");
     }
 
     saveConfigMutation.mutate({
