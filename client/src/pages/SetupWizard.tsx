@@ -1,406 +1,821 @@
 /*
- * iClawd SetupWizard - 安装向导
- * 
- * 功能：三步引导 - 安装依赖 -> 配对机器人 -> 注入灵魂
- * 风格：全屏沉浸式，步骤进度条，终端风格输出
+ * iClawd Setup Wizard - OpenClaw 安装向导
+ *
+ * 三步走：
+ *  Step 1: 连接 Gateway（填写 Gateway URL + Token）
+ *  Step 2: 配置主模型（选择 LLM + 填写 API Key）
+ *  Step 3: 注入灵魂（选择人格模板 + 自定义 Bot 名字）
  */
 
-import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
-import { CheckCircle, Circle, ChevronRight, Terminal, Bot, Sparkles, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import {
+  Terminal,
+  ChevronRight,
+  Check,
+  Loader2,
+  Eye,
+  EyeOff,
+  Zap,
+  Brain,
+  Cpu,
+  ArrowRight,
+  Activity,
+  Shield,
+} from "lucide-react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
-const steps = [
+// ─── Step Definitions ─────────────────────────────────────────────────────────
+
+const STEPS = [
+  { id: 1, label: "连接 Gateway", icon: Terminal, color: "oklch(0.78 0.18 200)" },
+  { id: 2, label: "配置模型", icon: Cpu, color: "oklch(0.82 0.22 140)" },
+  { id: 3, label: "注入灵魂", icon: Brain, color: "oklch(0.72 0.18 280)" },
+];
+
+// ─── Personality Templates ────────────────────────────────────────────────────
+
+const PERSONALITIES = [
   {
-    id: 1,
-    title: "安装依赖",
-    subtitle: "检测并安装必要的运行环境",
-    icon: Terminal,
+    id: "assistant",
+    name: "专业助手",
+    emoji: "🤝",
+    vibe: "professional, helpful, precise",
+    creature: "assistant",
+    desc: "严谨专业，回答准确，适合工作场景",
+    color: "oklch(0.78 0.18 200)",
   },
   {
-    id: 2,
-    title: "配对机器人",
-    subtitle: "连接你的 Telegram / Discord Bot",
-    icon: Bot,
+    id: "friend",
+    name: "贴心朋友",
+    emoji: "😊",
+    vibe: "friendly, warm, casual, empathetic",
+    creature: "companion",
+    desc: "温暖亲切，像朋友一样陪伴左右",
+    color: "oklch(0.82 0.22 140)",
   },
   {
-    id: 3,
-    title: "注入灵魂",
-    subtitle: "为 AI 设定初始人格",
-    icon: Sparkles,
+    id: "expert",
+    name: "技术极客",
+    emoji: "💻",
+    vibe: "technical, analytical, detail-oriented",
+    creature: "engineer",
+    desc: "深度技术分析，代码和数据是强项",
+    color: "oklch(0.78 0.18 65)",
+  },
+  {
+    id: "creative",
+    name: "创意大师",
+    emoji: "🎨",
+    vibe: "creative, imaginative, artistic, playful",
+    creature: "artist",
+    desc: "天马行空，擅长创意写作和头脑风暴",
+    color: "oklch(0.72 0.18 280)",
+  },
+  {
+    id: "tutor",
+    name: "耐心导师",
+    emoji: "📚",
+    vibe: "educational, patient, encouraging, clear",
+    creature: "teacher",
+    desc: "循循善诱，擅长解释复杂概念",
+    color: "oklch(0.75 0.18 340)",
+  },
+  {
+    id: "custom",
+    name: "自定义",
+    emoji: "⚙️",
+    vibe: "",
+    creature: "",
+    desc: "完全自定义人格，在灵魂编辑器中精细配置",
+    color: "oklch(0.52 0.05 215)",
   },
 ];
 
-const terminalLogs = [
-  { text: "$ iClawd init --check-env", delay: 0, type: "cmd" },
-  { text: "检测 Node.js 环境...", delay: 400, type: "info" },
-  { text: "✓ Node.js v22.13.0 已安装", delay: 900, type: "success" },
-  { text: "检测 Python 环境...", delay: 1300, type: "info" },
-  { text: "✓ Python 3.11.0 已安装", delay: 1800, type: "success" },
-  { text: "安装 OpenClawd 依赖...", delay: 2200, type: "info" },
-  { text: "✓ openclawd@2.1.3 安装完成", delay: 3200, type: "success" },
-  { text: "✓ 所有依赖已就绪！", delay: 3800, type: "success" },
+const QUICK_MODELS = [
+  { id: "anthropic/claude-opus-4-5", name: "Claude Opus 4.5", emoji: "🎭", provider: "anthropic" },
+  { id: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5", emoji: "🎵", provider: "anthropic" },
+  { id: "openai/gpt-4o", name: "GPT-4o", emoji: "🤖", provider: "openai" },
+  { id: "google/gemini-2.0-flash", name: "Gemini 2.0 Flash", emoji: "💎", provider: "google" },
+  { id: "deepseek/deepseek-chat", name: "DeepSeek V3", emoji: "🐋", provider: "deepseek" },
 ];
 
-const defaultPersonalities = [
-  { id: "assistant", label: "智能助手", desc: "专业、高效、全能", emoji: "🤖" },
-  { id: "friend", label: "数字朋友", desc: "亲切、幽默、陪伴", emoji: "😊" },
-  { id: "expert", label: "领域专家", desc: "深度、严谨、权威", emoji: "🎓" },
-  { id: "custom", label: "自定义", desc: "完全由你定义", emoji: "✨" },
-];
+// ─── Terminal Log Component ───────────────────────────────────────────────────
+
+function TerminalLog({ lines }: { lines: string[] }) {
+  return (
+    <div
+      className="rounded-sm p-4 font-mono text-xs space-y-1 max-h-32 overflow-y-auto"
+      style={{
+        background: "oklch(0.07 0.012 238)",
+        border: "1px solid oklch(0.18 0.025 235)",
+      }}
+    >
+      {lines.map((line, i) => (
+        <div
+          key={i}
+          className="flex items-start gap-2"
+          style={{
+            color: line.startsWith("✓")
+              ? "oklch(0.82 0.22 140)"
+              : line.startsWith("✗")
+              ? "oklch(0.62 0.22 25)"
+              : line.startsWith("→")
+              ? "oklch(0.78 0.18 200)"
+              : "oklch(0.55 0.04 215)",
+          }}
+        >
+          <span style={{ color: "oklch(0.38 0.04 220)" }}>$</span>
+          {line}
+        </div>
+      ))}
+      <div className="flex items-center gap-1" style={{ color: "oklch(0.78 0.18 200)" }}>
+        <span>$</span>
+        <span className="animate-pulse">_</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function SetupWizard() {
   const [, navigate] = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
-  const [visibleLogs, setVisibleLogs] = useState<typeof terminalLogs>([]);
-  const [step1Done, setStep1Done] = useState(false);
-  const [botToken, setBotToken] = useState("");
+  const [completed, setCompleted] = useState<number[]>([]);
+
+  // Step 1 state
+  const [gatewayUrl, setGatewayUrl] = useState("http://localhost:3000");
+  const [gatewayToken, setGatewayToken] = useState("");
   const [showToken, setShowToken] = useState(false);
-  const [selectedPersonality, setSelectedPersonality] = useState("assistant");
+  const [isTestingGateway, setIsTestingGateway] = useState(false);
+  const [gatewayLogs, setGatewayLogs] = useState<string[]>([
+    "→ 等待 Gateway 配置...",
+  ]);
+
+  // Step 2 state
+  const [selectedModel, setSelectedModel] = useState("anthropic/claude-opus-4-5");
+  const [apiKey, setApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  // Step 3 state
   const [botName, setBotName] = useState("ClawDBot");
+  const [selectedPersonality, setSelectedPersonality] = useState("assistant");
 
-  // 终端日志动画
-  useEffect(() => {
-    if (currentStep !== 1 || step1Done) return;
-    terminalLogs.forEach((log) => {
-      setTimeout(() => {
-        setVisibleLogs((prev) => [...prev, log]);
-        if (log === terminalLogs[terminalLogs.length - 1]) {
-          setTimeout(() => setStep1Done(true), 500);
-        }
-      }, log.delay);
-    });
-  }, [currentStep]);
+  const saveConfigMutation = trpc.dashboard.saveConfig.useMutation({
+    onSuccess: () => {
+      toast.success("配置已保存！");
+    },
+    onError: () => {
+      toast.error("保存失败，请重试");
+    },
+  });
 
-  const handleStep2Next = () => {
-    if (!botToken.trim()) {
-      toast.error("请输入 Bot Token");
+  const saveModelsMutation = trpc.dashboard.saveModels.useMutation({
+    onError: () => toast.error("模型保存失败，请重试"),
+  });
+
+  const saveSoulMutation = trpc.dashboard.saveSoul.useMutation();
+
+  // ─── Step 1: Test Gateway ─────────────────────────────────────────────────
+
+  const handleTestGateway = async () => {
+    if (!gatewayUrl) {
+      toast.error("请填写 Gateway URL");
       return;
     }
-    toast.success("Bot Token 验证成功！");
+    setIsTestingGateway(true);
+    setGatewayLogs([`→ 正在连接 ${gatewayUrl}...`]);
+
+    await new Promise((r) => setTimeout(r, 800));
+    setGatewayLogs((prev) => [...prev, "→ 发送 health check 请求..."]);
+    await new Promise((r) => setTimeout(r, 600));
+
+    try {
+      const res = await fetch(`${gatewayUrl}/health`, {
+        signal: AbortSignal.timeout(5000),
+      }).catch(() => null);
+
+      if (res?.ok) {
+        setGatewayLogs((prev) => [
+          ...prev,
+          "✓ Gateway 连接成功",
+          "✓ OpenClawd 服务正在运行",
+        ]);
+        toast.success("Gateway 连接成功！");
+      } else {
+        setGatewayLogs((prev) => [
+          ...prev,
+          "→ Gateway 未响应，保存配置继续...",
+          "→ 稍后可在驾驶舱中验证连接状态",
+        ]);
+      }
+    } catch {
+      setGatewayLogs((prev) => [
+        ...prev,
+        "→ 无法直接访问 Gateway（跨域限制）",
+        "→ 配置已保存，将在驾驶舱中验证连接",
+      ]);
+    }
+
+    saveConfigMutation.mutate({
+      gatewayUrl,
+      ...(gatewayToken && { gatewayToken }),
+    });
+
+    setCompleted((prev) => Array.from(new Set([...prev, 1])));
+    setIsTestingGateway(false);
+  };
+
+  // ─── Step 2: Save Model ───────────────────────────────────────────────────
+
+  const handleSaveModel = () => {
+    if (!selectedModel) {
+      toast.error("请选择一个模型");
+      return;
+    }
+
+    saveModelsMutation.mutate({ primary: selectedModel });
+    setCompleted((prev) => Array.from(new Set([...prev, 2])));
+    toast.success("模型配置已保存！");
     setCurrentStep(3);
   };
 
-  const handleFinish = () => {
-    toast.success("iClawd 配置完成！正在进入驾驶舱...");
+  // ─── Step 3: Save Soul ────────────────────────────────────────────────────
+
+  const handleSaveSoul = () => {
+    const personality = PERSONALITIES.find((p) => p.id === selectedPersonality);
+    if (!personality) return;
+
+    const soulMd =
+      personality.id === "custom"
+        ? `# ${botName}\n\n你是 ${botName}，一个由 OpenClawd 驱动的 AI 助手。\n\n请在灵魂编辑器中进一步定制你的人格。`
+        : `# ${botName}\n\n你是 ${botName}，${personality.desc}。\n\n## 人格特征\n\n- 风格：${personality.vibe}\n- 类型：${personality.creature}\n\n## 行为准则\n\n1. 始终保持你的人格特征\n2. 用中文回复（除非用户使用其他语言）\n3. 简洁清晰，避免冗余\n`;
+
+    saveConfigMutation.mutate({
+      botName,
+      botEmoji: personality.emoji,
+      botVibe: personality.vibe,
+      botCreature: personality.creature,
+    });
+
+    saveSoulMutation.mutate({ soulMd });
+
+    setCompleted((prev) => Array.from(new Set([...prev, 3])));
+    toast.success("灵魂注入成功！正在进入驾驶舱...");
     setTimeout(() => navigate("/dashboard"), 1500);
   };
 
+  const isStepCompleted = (step: number) => completed.includes(step);
+
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center p-6 grid-bg"
+      className="min-h-screen flex items-center justify-center p-6"
       style={{ background: "oklch(0.085 0.015 240)" }}
     >
-      {/* 顶部 Logo */}
-      <div className="mb-10 text-center">
-        <div className="flex items-center justify-center gap-3 mb-2">
-          <img
-            src="https://private-us-east-1.manuscdn.com/sessionFile/IKlXMo9WTJl7E2oJy3drln/sandbox/Na3chyG3qQlQjxRaJCPz1U_1771759105259_na1fn_aWNsYXdkLWxvZ28taWNvbg.png?x-oss-process=image/resize,w_1920,h_1920/format,webp/quality,q_80&Expires=1798761600&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvSUtsWE1vOVdUSmw3RTJvSnkzZHJsbi9zYW5kYm94L05hM2NoeUczcVFsUWp4UmFKQ1B6MVVfMTc3MTc1OTEwNTI1OV9uYTFmbl9hV05zWVhka0xXeHZaMjh0YVdOdmJnLnBuZz94LW9zcy1wcm9jZXNzPWltYWdlL3Jlc2l6ZSx3XzE5MjAsaF8xOTIwL2Zvcm1hdCx3ZWJwL3F1YWxpdHkscV84MCIsIkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc5ODc2MTYwMH19fV19&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=hJaF33rLZbLs5mkeVUbStxC-FTcZxu8g3cTPrJUVW-0MxYHeFi3VouQ~Flf8PzVb3KxJTvnIP~eLMTAsBppdZ7~EhCmW3EZlEq7KZm9k9MEt2TSEtnqXTWAW307YdKOcp9mvEqmz9lCVVHiE-WjpKkdh4XvvsUdBjJEYxHeNhnp8QfhOVh7-mdT8yPj1xAvkDZBIzZ0~FonPdBtVPhQliAhszHoda2sKqsY8eEUy7iQrTYdnO~DjGRuHqT-5Vq6q84smVWxBlogxf3Ml8yma~4sdZiL6emUnZ~MlnEvXdVRXt-i8mJg6d7OAotuNymFgSJDk0ErdQrS1RsgQy8AhAg__"
-            alt="iClawd"
-            className="w-10 h-10 object-contain"
-          />
-          <span
-            className="text-3xl font-bold neon-text"
-            style={{ fontFamily: "'Space Mono', monospace" }}
+      {/* 背景网格 */}
+      <div className="absolute inset-0 grid-bg opacity-20 pointer-events-none" />
+
+      <div className="relative z-10 w-full max-w-2xl">
+        {/* 标题 */}
+        <div className="text-center mb-8">
+          <div
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-sm mb-4 text-xs"
+            style={{
+              background: "oklch(0.78 0.18 200 / 0.1)",
+              border: "1px solid oklch(0.78 0.18 200 / 0.3)",
+              color: "oklch(0.78 0.18 200)",
+              fontFamily: "'JetBrains Mono', monospace",
+            }}
           >
-            iClawd
-          </span>
-        </div>
-        <p className="text-sm" style={{ color: "oklch(0.52 0.05 215)" }}>
-          欢迎来到机甲驾驶舱 · 首次配置向导
-        </p>
-      </div>
-
-      {/* 步骤进度条 */}
-      <div className="flex items-center gap-0 mb-10 w-full max-w-lg">
-        {steps.map((step, index) => (
-          <div key={step.id} className="flex items-center flex-1">
-            <div className="flex flex-col items-center">
-              <div
-                className="w-10 h-10 rounded-sm flex items-center justify-center transition-all duration-300"
-                style={{
-                  background: currentStep >= step.id ? "oklch(0.78 0.18 200 / 0.15)" : "oklch(0.11 0.018 235)",
-                  border: `1px solid ${currentStep >= step.id ? "oklch(0.78 0.18 200 / 0.6)" : "oklch(0.22 0.03 230)"}`,
-                  boxShadow: currentStep === step.id ? "0 0 16px oklch(0.78 0.18 200 / 0.3)" : "none",
-                }}
-              >
-                {currentStep > step.id ? (
-                  <CheckCircle size={18} style={{ color: "oklch(0.82 0.22 140)" }} />
-                ) : currentStep === step.id ? (
-                  <step.icon size={18} style={{ color: "oklch(0.78 0.18 200)" }} />
-                ) : (
-                  <Circle size={18} style={{ color: "oklch(0.38 0.04 220)" }} />
-                )}
-              </div>
-              <div
-                className="text-xs mt-2 text-center"
-                style={{
-                  color: currentStep >= step.id ? "oklch(0.78 0.18 200)" : "oklch(0.38 0.04 220)",
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: "10px",
-                }}
-              >
-                {step.title}
-              </div>
-            </div>
-            {index < steps.length - 1 && (
-              <div
-                className="flex-1 h-px mx-2 transition-all duration-500"
-                style={{
-                  background: currentStep > step.id ? "oklch(0.78 0.18 200 / 0.5)" : "oklch(0.22 0.03 230)",
-                }}
-              />
-            )}
+            <Activity size={10} />
+            SETUP WIZARD / 安装向导
           </div>
-        ))}
-      </div>
-
-      {/* 步骤内容卡片 */}
-      <div
-        className="w-full max-w-lg panel-card p-6 fade-in-up"
-        style={{ borderColor: "oklch(0.78 0.18 200 / 0.3)" }}
-      >
-        {/* Step 1: 安装依赖 */}
-        {currentStep === 1 && (
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <Terminal size={18} style={{ color: "oklch(0.78 0.18 200)" }} />
-              <h2
-                className="text-lg font-bold"
-                style={{ fontFamily: "'Space Mono', monospace", color: "oklch(0.92 0.02 210)" }}
-              >
-                STEP 01 · 安装依赖
-              </h2>
-            </div>
-            <p className="text-sm mb-4" style={{ color: "oklch(0.52 0.05 215)" }}>
-              iClawd 正在自动检测并安装所需的运行环境，无需手动操作。
-            </p>
-
-            {/* 终端输出 */}
-            <div
-              className="rounded-sm p-4 mb-4 min-h-40 font-mono text-xs"
+          <h1
+            className="text-3xl font-bold mb-2"
+            style={{ fontFamily: "'Space Mono', monospace", color: "oklch(0.92 0.02 210)" }}
+          >
+            配置你的{" "}
+            <span
               style={{
-                background: "oklch(0.06 0.012 238)",
-                border: "1px solid oklch(0.18 0.025 235)",
-                fontFamily: "'JetBrains Mono', monospace",
+                color: "oklch(0.78 0.18 200)",
+                textShadow: "0 0 20px oklch(0.78 0.18 200 / 0.5)",
               }}
             >
-              {visibleLogs.map((log, i) => (
-                <div
-                  key={i}
-                  className="mb-1"
+              ClawDBot
+            </span>
+          </h1>
+          <p className="text-sm" style={{ color: "oklch(0.52 0.05 215)" }}>
+            三步完成配置，让 AI 驾驶舱就绪
+          </p>
+        </div>
+
+        {/* 步骤指示器 */}
+        <div className="flex items-center justify-center gap-2 mb-8">
+          {STEPS.map((step, index) => {
+            const Icon = step.icon;
+            const isActive = currentStep === step.id;
+            const isDone = isStepCompleted(step.id);
+            return (
+              <div key={step.id} className="flex items-center gap-2">
+                <button
+                  onClick={() => (isDone || isActive ? setCurrentStep(step.id) : null)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-sm transition-all duration-150"
                   style={{
-                    color: log.type === "cmd" ? "oklch(0.78 0.18 200)" :
-                      log.type === "success" ? "oklch(0.82 0.22 140)" :
-                        "oklch(0.65 0.04 215)",
+                    background: isActive
+                      ? `${step.color}/0.15`
+                      : isDone
+                      ? "oklch(0.82 0.22 140 / 0.08)"
+                      : "oklch(0.11 0.016 236)",
+                    border: `1px solid ${
+                      isActive
+                        ? `${step.color}/0.5`
+                        : isDone
+                        ? "oklch(0.82 0.22 140 / 0.3)"
+                        : "oklch(0.18 0.025 235)"
+                    }`,
                   }}
                 >
-                  {log.text}
+                  {isDone ? (
+                    <Check size={14} style={{ color: "oklch(0.82 0.22 140)" }} />
+                  ) : (
+                    <Icon
+                      size={14}
+                      style={{ color: isActive ? step.color : "oklch(0.45 0.04 220)" }}
+                    />
+                  )}
+                  <span
+                    className="text-xs"
+                    style={{
+                      color: isActive
+                        ? step.color
+                        : isDone
+                        ? "oklch(0.82 0.22 140)"
+                        : "oklch(0.45 0.04 220)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    {step.label}
+                  </span>
+                </button>
+                {index < STEPS.length - 1 && (
+                  <ChevronRight size={14} style={{ color: "oklch(0.28 0.03 230)" }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 步骤内容卡片 */}
+        <div
+          className="rounded-sm p-6"
+          style={{
+            background: "oklch(0.10 0.015 238)",
+            border: "1px solid oklch(0.18 0.025 235)",
+          }}
+        >
+          {/* ─── Step 1: Gateway ─────────────────────────────────────────── */}
+          {currentStep === 1 && (
+            <div className="space-y-5">
+              <div>
+                <div
+                  className="text-xs mb-1"
+                  style={{
+                    color: "oklch(0.78 0.18 200)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  STEP 01 / CONNECT GATEWAY
                 </div>
-              ))}
-              {!step1Done && (
-                <span
-                  className="inline-block w-2 h-4 ml-1"
-                  style={{ background: "oklch(0.78 0.18 200)", animation: "heartbeat-pulse 1s infinite" }}
-                />
-              )}
-            </div>
+                <h2
+                  className="text-xl font-bold"
+                  style={{
+                    fontFamily: "'Space Mono', monospace",
+                    color: "oklch(0.92 0.02 210)",
+                  }}
+                >
+                  连接 OpenClawd Gateway
+                </h2>
+                <p className="text-sm mt-1" style={{ color: "oklch(0.52 0.05 215)" }}>
+                  填写你本地运行的 OpenClawd Gateway 地址和访问令牌
+                </p>
+              </div>
 
-            <button
-              onClick={() => setCurrentStep(2)}
-              disabled={!step1Done}
-              className="w-full py-3 text-sm font-medium rounded-sm flex items-center justify-center gap-2 transition-all duration-150"
-              style={{
-                background: step1Done ? "oklch(0.78 0.18 200 / 0.15)" : "oklch(0.14 0.015 235)",
-                border: `1px solid ${step1Done ? "oklch(0.78 0.18 200 / 0.5)" : "oklch(0.22 0.03 230)"}`,
-                color: step1Done ? "oklch(0.78 0.18 200)" : "oklch(0.38 0.04 220)",
-                fontFamily: "'JetBrains Mono', monospace",
-                letterSpacing: "0.1em",
-                cursor: step1Done ? "pointer" : "not-allowed",
-              }}
-            >
-              {step1Done ? (
-                <>
-                  下一步：配对机器人
-                  <ChevronRight size={16} />
-                </>
-              ) : (
-                "安装中，请稍候..."
-              )}
-            </button>
-          </div>
-        )}
+              <div className="space-y-3">
+                <div>
+                  <label
+                    className="text-xs block mb-1.5"
+                    style={{
+                      color: "oklch(0.52 0.05 215)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    GATEWAY_URL
+                  </label>
+                  <input
+                    type="text"
+                    value={gatewayUrl}
+                    onChange={(e) => setGatewayUrl(e.target.value)}
+                    placeholder="http://localhost:3000"
+                    className="w-full px-3 py-2.5 text-sm rounded-sm outline-none"
+                    style={{
+                      background: "oklch(0.08 0.012 238)",
+                      border: "1px solid oklch(0.22 0.03 230)",
+                      color: "oklch(0.88 0.02 210)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  />
+                </div>
 
-        {/* Step 2: 配对机器人 */}
-        {currentStep === 2 && (
-          <div className="fade-in-up">
-            <div className="flex items-center gap-2 mb-4">
-              <Bot size={18} style={{ color: "oklch(0.78 0.18 200)" }} />
-              <h2
-                className="text-lg font-bold"
-                style={{ fontFamily: "'Space Mono', monospace", color: "oklch(0.92 0.02 210)" }}
+                <div>
+                  <label
+                    className="text-xs block mb-1.5"
+                    style={{
+                      color: "oklch(0.52 0.05 215)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    GATEWAY_TOKEN{" "}
+                    <span style={{ color: "oklch(0.45 0.04 220)" }}>(可选)</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showToken ? "text" : "password"}
+                      value={gatewayToken}
+                      onChange={(e) => setGatewayToken(e.target.value)}
+                      placeholder="your-secret-token"
+                      className="w-full pr-10 pl-3 py-2.5 text-sm rounded-sm outline-none"
+                      style={{
+                        background: "oklch(0.08 0.012 238)",
+                        border: "1px solid oklch(0.22 0.03 230)",
+                        color: "oklch(0.88 0.02 210)",
+                        fontFamily: "'JetBrains Mono', monospace",
+                      }}
+                    />
+                    <button
+                      onClick={() => setShowToken(!showToken)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                      style={{ color: "oklch(0.45 0.04 220)" }}
+                    >
+                      {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <TerminalLog lines={gatewayLogs} />
+
+              <div
+                className="flex items-center gap-2 text-xs p-3 rounded-sm"
+                style={{
+                  background: "oklch(0.82 0.22 140 / 0.05)",
+                  border: "1px solid oklch(0.82 0.22 140 / 0.15)",
+                  color: "oklch(0.52 0.05 215)",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
               >
-                STEP 02 · 配对机器人
-              </h2>
-            </div>
-            <p className="text-sm mb-6" style={{ color: "oklch(0.52 0.05 215)" }}>
-              请填入你的 Telegram Bot Token。所有信息均仅存储在本地，iClawd 不会上传任何数据。
-            </p>
+                <Shield size={11} style={{ color: "oklch(0.82 0.22 140)" }} />
+                Token 仅存储在本地数据库，不会上传到任何第三方服务
+              </div>
 
-            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Link href="/">
+                  <button
+                    className="text-sm transition-colors"
+                    style={{
+                      color: "oklch(0.45 0.04 220)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    返回首页
+                  </button>
+                </Link>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleTestGateway}
+                    disabled={isTestingGateway}
+                    className="flex items-center gap-2 px-4 py-2 text-sm rounded-sm transition-all duration-150 hover:scale-105 disabled:opacity-50"
+                    style={{
+                      background: "oklch(0.78 0.18 200 / 0.15)",
+                      border: "1px solid oklch(0.78 0.18 200 / 0.5)",
+                      color: "oklch(0.78 0.18 200)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    {isTestingGateway ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Terminal size={14} />
+                    )}
+                    测试连接
+                  </button>
+                  {isStepCompleted(1) && (
+                    <button
+                      onClick={() => setCurrentStep(2)}
+                      className="flex items-center gap-2 px-4 py-2 text-sm rounded-sm transition-all duration-150 hover:scale-105"
+                      style={{
+                        background: "oklch(0.82 0.22 140 / 0.15)",
+                        border: "1px solid oklch(0.82 0.22 140 / 0.5)",
+                        color: "oklch(0.82 0.22 140)",
+                        fontFamily: "'JetBrains Mono', monospace",
+                      }}
+                    >
+                      下一步
+                      <ArrowRight size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Step 2: Model ───────────────────────────────────────────── */}
+          {currentStep === 2 && (
+            <div className="space-y-5">
+              <div>
+                <div
+                  className="text-xs mb-1"
+                  style={{
+                    color: "oklch(0.82 0.22 140)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  STEP 02 / CONFIGURE MODEL
+                </div>
+                <h2
+                  className="text-xl font-bold"
+                  style={{
+                    fontFamily: "'Space Mono', monospace",
+                    color: "oklch(0.92 0.02 210)",
+                  }}
+                >
+                  选择 AI 模型
+                </h2>
+                <p className="text-sm mt-1" style={{ color: "oklch(0.52 0.05 215)" }}>
+                  选择 ClawDBot 的主要对话模型，并填写对应的 API Key
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                {QUICK_MODELS.map((model) => {
+                  const isSelected = selectedModel === model.id;
+                  return (
+                    <button
+                      key={model.id}
+                      onClick={() => setSelectedModel(model.id)}
+                      className="flex items-center gap-3 p-3 rounded-sm text-left transition-all duration-150"
+                      style={{
+                        background: isSelected
+                          ? "oklch(0.82 0.22 140 / 0.08)"
+                          : "oklch(0.08 0.012 238)",
+                        border: `1px solid ${
+                          isSelected
+                            ? "oklch(0.82 0.22 140 / 0.4)"
+                            : "oklch(0.18 0.025 235)"
+                        }`,
+                      }}
+                    >
+                      <span className="text-xl">{model.emoji}</span>
+                      <span
+                        className="text-sm flex-1"
+                        style={{
+                          color: isSelected
+                            ? "oklch(0.88 0.02 210)"
+                            : "oklch(0.65 0.04 215)",
+                          fontFamily: "'IBM Plex Sans', sans-serif",
+                        }}
+                      >
+                        {model.name}
+                      </span>
+                      <span
+                        className="text-xs"
+                        style={{
+                          color: "oklch(0.38 0.04 220)",
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}
+                      >
+                        {model.provider}
+                      </span>
+                      {isSelected && (
+                        <Check size={14} style={{ color: "oklch(0.82 0.22 140)" }} />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div>
                 <label
-                  className="block text-xs mb-2"
-                  style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
+                  className="text-xs block mb-1.5"
+                  style={{
+                    color: "oklch(0.52 0.05 215)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
                 >
-                  BOT NAME
+                  API KEY{" "}
+                  <span style={{ color: "oklch(0.45 0.04 220)" }}>(用于调用所选模型)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showApiKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={
+                      selectedModel.startsWith("anthropic")
+                        ? "sk-ant-..."
+                        : selectedModel.startsWith("openai")
+                        ? "sk-..."
+                        : selectedModel.startsWith("google")
+                        ? "AIza..."
+                        : "your-api-key"
+                    }
+                    className="w-full pr-10 pl-3 py-2.5 text-sm rounded-sm outline-none"
+                    style={{
+                      background: "oklch(0.08 0.012 238)",
+                      border: "1px solid oklch(0.22 0.03 230)",
+                      color: "oklch(0.88 0.02 210)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  />
+                  <button
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                    style={{ color: "oklch(0.45 0.04 220)" }}
+                  >
+                    {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setCurrentStep(1)}
+                  className="text-sm transition-colors"
+                  style={{
+                    color: "oklch(0.45 0.04 220)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  上一步
+                </button>
+                <button
+                  onClick={handleSaveModel}
+                  className="flex items-center gap-2 px-4 py-2 text-sm rounded-sm transition-all duration-150 hover:scale-105"
+                  style={{
+                    background: "oklch(0.82 0.22 140 / 0.15)",
+                    border: "1px solid oklch(0.82 0.22 140 / 0.5)",
+                    color: "oklch(0.82 0.22 140)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  <Cpu size={14} />
+                  保存并继续
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Step 3: Soul ────────────────────────────────────────────── */}
+          {currentStep === 3 && (
+            <div className="space-y-5">
+              <div>
+                <div
+                  className="text-xs mb-1"
+                  style={{
+                    color: "oklch(0.72 0.18 280)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  STEP 03 / INJECT SOUL
+                </div>
+                <h2
+                  className="text-xl font-bold"
+                  style={{
+                    fontFamily: "'Space Mono', monospace",
+                    color: "oklch(0.92 0.02 210)",
+                  }}
+                >
+                  注入灵魂
+                </h2>
+                <p className="text-sm mt-1" style={{ color: "oklch(0.52 0.05 215)" }}>
+                  给你的 Bot 起个名字，选择一个人格模板
+                </p>
+              </div>
+
+              <div>
+                <label
+                  className="text-xs block mb-1.5"
+                  style={{
+                    color: "oklch(0.52 0.05 215)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  BOT_NAME
                 </label>
                 <input
                   type="text"
                   value={botName}
                   onChange={(e) => setBotName(e.target.value)}
+                  placeholder="ClawDBot"
                   className="w-full px-3 py-2.5 text-sm rounded-sm outline-none"
                   style={{
-                    background: "oklch(0.14 0.015 235)",
+                    background: "oklch(0.08 0.012 238)",
                     border: "1px solid oklch(0.22 0.03 230)",
                     color: "oklch(0.88 0.02 210)",
-                    fontFamily: "'IBM Plex Sans', sans-serif",
+                    fontFamily: "'JetBrains Mono', monospace",
                   }}
-                  placeholder="给你的 Bot 起个名字"
                 />
               </div>
-              <div>
-                <label
-                  className="block text-xs mb-2"
-                  style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
-                >
-                  BOT TOKEN
-                  <span
-                    className="ml-2 px-1.5 py-0.5 rounded-sm text-xs"
-                    style={{
-                      background: "oklch(0.82 0.22 140 / 0.1)",
-                      border: "1px solid oklch(0.82 0.22 140 / 0.3)",
-                      color: "oklch(0.82 0.22 140)",
-                    }}
-                  >
-                    本地加密存储
-                  </span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showToken ? "text" : "password"}
-                    value={botToken}
-                    onChange={(e) => setBotToken(e.target.value)}
-                    className="w-full px-3 py-2.5 pr-10 text-sm rounded-sm outline-none"
-                    style={{
-                      background: "oklch(0.14 0.015 235)",
-                      border: "1px solid oklch(0.22 0.03 230)",
-                      color: "oklch(0.88 0.02 210)",
-                      fontFamily: "'JetBrains Mono', monospace",
-                    }}
-                    placeholder="1234567890:ABCdefGHIjklMNOpqrSTUvwxyz"
-                  />
-                  <button
-                    onClick={() => setShowToken(!showToken)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2"
-                    style={{ color: "oklch(0.52 0.05 215)" }}
-                  >
-                    {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-                <p className="text-xs mt-1.5" style={{ color: "oklch(0.38 0.04 220)" }}>
-                  通过 @BotFather 获取 Token。iClawd 使用本地加密存储，绝不上传。
-                </p>
+
+              <div className="grid grid-cols-2 gap-2">
+                {PERSONALITIES.map((p) => {
+                  const isSelected = selectedPersonality === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => setSelectedPersonality(p.id)}
+                      className="p-3 rounded-sm text-left transition-all duration-150"
+                      style={{
+                        background: isSelected
+                          ? `${p.color}/0.1`
+                          : "oklch(0.08 0.012 238)",
+                        border: `1px solid ${
+                          isSelected ? `${p.color}/0.4` : "oklch(0.18 0.025 235)"
+                        }`,
+                      }}
+                    >
+                      <div className="text-xl mb-1">{p.emoji}</div>
+                      <div
+                        className="text-sm font-medium mb-0.5"
+                        style={{
+                          color: isSelected ? p.color : "oklch(0.72 0.04 215)",
+                          fontFamily: "'IBM Plex Sans', sans-serif",
+                        }}
+                      >
+                        {p.name}
+                      </div>
+                      <div className="text-xs" style={{ color: "oklch(0.45 0.04 220)" }}>
+                        {p.desc}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            </div>
 
-            <button
-              onClick={handleStep2Next}
-              className="w-full mt-6 py-3 text-sm font-medium rounded-sm flex items-center justify-center gap-2 transition-all duration-150"
-              style={{
-                background: "oklch(0.78 0.18 200 / 0.15)",
-                border: "1px solid oklch(0.78 0.18 200 / 0.5)",
-                color: "oklch(0.78 0.18 200)",
-                fontFamily: "'JetBrains Mono', monospace",
-                letterSpacing: "0.1em",
-              }}
-            >
-              验证并继续
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        )}
-
-        {/* Step 3: 注入灵魂 */}
-        {currentStep === 3 && (
-          <div className="fade-in-up">
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles size={18} style={{ color: "oklch(0.78 0.18 200)" }} />
-              <h2
-                className="text-lg font-bold"
-                style={{ fontFamily: "'Space Mono', monospace", color: "oklch(0.92 0.02 210)" }}
-              >
-                STEP 03 · 注入灵魂
-              </h2>
-            </div>
-            <p className="text-sm mb-6" style={{ color: "oklch(0.52 0.05 215)" }}>
-              为 {botName} 选择一个初始人格。你随时可以在"灵魂编辑器"中进行更精细的调整。
-            </p>
-
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              {defaultPersonalities.map((p) => (
+              <div className="flex items-center justify-between">
                 <button
-                  key={p.id}
-                  onClick={() => setSelectedPersonality(p.id)}
-                  className="p-4 rounded-sm text-left transition-all duration-150"
+                  onClick={() => setCurrentStep(2)}
+                  className="text-sm transition-colors"
                   style={{
-                    background: selectedPersonality === p.id ? "oklch(0.78 0.18 200 / 0.12)" : "oklch(0.14 0.015 235)",
-                    border: `1px solid ${selectedPersonality === p.id ? "oklch(0.78 0.18 200 / 0.6)" : "oklch(0.22 0.03 230)"}`,
-                    boxShadow: selectedPersonality === p.id ? "0 0 12px oklch(0.78 0.18 200 / 0.1)" : "none",
+                    color: "oklch(0.45 0.04 220)",
+                    fontFamily: "'JetBrains Mono', monospace",
                   }}
                 >
-                  <div className="text-2xl mb-2">{p.emoji}</div>
-                  <div
-                    className="text-sm font-semibold"
-                    style={{
-                      color: selectedPersonality === p.id ? "oklch(0.78 0.18 200)" : "oklch(0.75 0.04 210)",
-                      fontFamily: "'IBM Plex Sans', sans-serif",
-                    }}
-                  >
-                    {p.label}
-                  </div>
-                  <div className="text-xs mt-0.5" style={{ color: "oklch(0.45 0.04 220)" }}>
-                    {p.desc}
-                  </div>
+                  上一步
                 </button>
-              ))}
+                <button
+                  onClick={handleSaveSoul}
+                  disabled={saveConfigMutation.isPending || saveSoulMutation.isPending}
+                  className="flex items-center gap-2 px-5 py-2.5 text-sm rounded-sm transition-all duration-150 hover:scale-105 disabled:opacity-50"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, oklch(0.78 0.18 200 / 0.2), oklch(0.72 0.18 280 / 0.15))",
+                    border: "1px solid oklch(0.72 0.18 280 / 0.5)",
+                    color: "oklch(0.72 0.18 280)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    boxShadow: "0 0 20px oklch(0.72 0.18 280 / 0.15)",
+                  }}
+                >
+                  {saveConfigMutation.isPending || saveSoulMutation.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Zap size={14} />
+                  )}
+                  注入灵魂，进入驾驶舱
+                  <ArrowRight size={14} />
+                </button>
+              </div>
             </div>
+          )}
+        </div>
 
-            <button
-              onClick={handleFinish}
-              className="w-full py-3 text-sm font-medium rounded-sm flex items-center justify-center gap-2 transition-all duration-150"
-              style={{
-                background: "linear-gradient(135deg, oklch(0.78 0.18 200 / 0.2), oklch(0.72 0.18 280 / 0.2))",
-                border: "1px solid oklch(0.78 0.18 200 / 0.5)",
-                color: "oklch(0.78 0.18 200)",
-                fontFamily: "'JetBrains Mono', monospace",
-                letterSpacing: "0.1em",
-              }}
+        <p
+          className="text-center text-xs mt-4"
+          style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
+        >
+          已有配置？
+          <Link href="/dashboard">
+            <span
+              className="ml-1 cursor-pointer hover:underline"
+              style={{ color: "oklch(0.78 0.18 200)" }}
             >
-              启动驾驶舱
-              <ArrowRight size={16} />
-            </button>
-          </div>
-        )}
+              直接进入驾驶舱 →
+            </span>
+          </Link>
+        </p>
       </div>
-
-      {/* 底部说明 */}
-      <p
-        className="mt-6 text-xs text-center"
-        style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
-      >
-        iClawd v0.1.0-alpha · 所有数据本地存储 · 开源免费
-      </p>
     </div>
   );
 }

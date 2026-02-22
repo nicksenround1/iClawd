@@ -1,349 +1,705 @@
 /*
- * iClawd SoulEditor - 灵魂与记忆管理
- * 
- * 功能：性格标签选择、记忆卡片管理、System Prompt 预览
- * 风格：工业终端，标签选择，卡片流
+ * iClawd Soul Editor - OpenClaw SOUL.md + 记忆管理
+ *
+ * 功能：
+ *  - SOUL.md 可视化编辑（性格标签 → 自动生成 SOUL.md 内容）
+ *  - 记忆卡片管理（增删改查、置顶）
+ *  - 实时保存到后端 tRPC API
  */
 
-import { useState } from "react";
-import { Brain, Tag, Trash2, Pin, Search, Plus, Eye, EyeOff, Sparkles } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  Brain,
+  Plus,
+  Trash2,
+  Pin,
+  PinOff,
+  Save,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
-const personalityTags = [
-  { id: "witty", label: "毒舌", emoji: "⚡", desc: "犀利幽默，不留情面" },
-  { id: "gentle", label: "温柔", emoji: "🌸", desc: "体贴入微，耐心倾听" },
-  { id: "academic", label: "学术", emoji: "📚", desc: "严谨专业，引经据典" },
-  { id: "minimal", label: "极简", emoji: "◻", desc: "言简意赅，直击要点" },
-  { id: "creative", label: "创意", emoji: "🎨", desc: "天马行空，脑洞大开" },
-  { id: "logical", label: "逻辑", emoji: "🔬", desc: "条理清晰，推理严密" },
-  { id: "empathetic", label: "共情", emoji: "💙", desc: "感同身受，情感丰富" },
-  { id: "humorous", label: "幽默", emoji: "😄", desc: "妙语连珠，轻松愉快" },
-  { id: "direct", label: "直接", emoji: "🎯", desc: "开门见山，不绕弯子" },
-  { id: "curious", label: "好奇", emoji: "🔍", desc: "求知欲强，探索精神" },
+// ─── Soul Presets ─────────────────────────────────────────────────────────────
+
+const PERSONALITY_TAGS = [
+  { id: "helpful", label: "乐于助人", emoji: "🤝", desc: "主动提供帮助，回答详尽" },
+  { id: "concise", label: "简洁精炼", emoji: "✂️", desc: "回复简短，直击要点" },
+  { id: "witty", label: "幽默风趣", emoji: "😄", desc: "适时加入幽默，轻松愉快" },
+  { id: "academic", label: "学术严谨", emoji: "🎓", desc: "引用来源，逻辑严密" },
+  { id: "creative", label: "富有创意", emoji: "🎨", desc: "提供新颖独特的想法" },
+  { id: "empathetic", label: "善解人意", emoji: "💙", desc: "关注情感，给予支持" },
+  { id: "direct", label: "直接坦率", emoji: "🎯", desc: "不绕弯子，直接说重点" },
+  { id: "cautious", label: "谨慎保守", emoji: "🛡️", desc: "不确定时明确说明" },
 ];
 
-const initialMemories = [
-  { id: 1, content: "用户喜欢简洁的回答，不喜欢过多废话", pinned: true, time: "2天前", category: "偏好" },
-  { id: 2, content: "用户是一名后端开发工程师，熟悉 Python 和 Go", pinned: true, time: "1周前", category: "身份" },
-  { id: 3, content: "用户的项目名叫 iClawd，是一个 AI Bot 管理界面", pinned: false, time: "3天前", category: "项目" },
-  { id: 4, content: "用户不喜欢被称为您，更喜欢直接交流", pinned: false, time: "5天前", category: "偏好" },
-  { id: 5, content: "用户对赛博朋克风格的设计有强烈偏好", pinned: false, time: "1周前", category: "偏好" },
-  { id: 6, content: "用户的时区是 UTC+8，通常在晚上活跃", pinned: false, time: "2周前", category: "习惯" },
+const LANGUAGE_TAGS = [
+  { id: "zh", label: "中文优先", emoji: "🇨🇳" },
+  { id: "en", label: "英文优先", emoji: "🇺🇸" },
+  { id: "bilingual", label: "双语切换", emoji: "🌐" },
 ];
 
-const categoryColors: { [key: string]: string } = {
-  偏好: "oklch(0.78 0.18 200)",
-  身份: "oklch(0.72 0.18 280)",
-  项目: "oklch(0.82 0.22 140)",
-  习惯: "oklch(0.78 0.18 65)",
-};
+const CREATURE_PRESETS = [
+  { id: "lobster", label: "龙虾", emoji: "🦞", desc: "ClawDBot 的默认形态" },
+  { id: "robot", label: "机器人", emoji: "🤖", desc: "经典 AI 助手形象" },
+  { id: "cat", label: "猫咪", emoji: "🐱", desc: "可爱亲切的伙伴" },
+  { id: "owl", label: "猫头鹰", emoji: "🦉", desc: "智慧博学的顾问" },
+  { id: "dragon", label: "龙", emoji: "🐉", desc: "强大神秘的存在" },
+  { id: "fox", label: "狐狸", emoji: "🦊", desc: "机智灵活的助手" },
+];
 
-export default function SoulEditor() {
-  const [selectedTags, setSelectedTags] = useState<string[]>(["witty", "direct", "logical"]);
-  const [memories, setMemories] = useState(initialMemories);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showPrompt, setShowPrompt] = useState(false);
+function generateSoulMd(
+  selectedTags: string[],
+  selectedLang: string,
+  selectedCreature: string,
+  botName: string,
+  customVibe: string
+): string {
+  const creature = CREATURE_PRESETS.find((c) => c.id === selectedCreature);
+  const tags = PERSONALITY_TAGS.filter((t) => selectedTags.includes(t.id));
+  const lang = LANGUAGE_TAGS.find((l) => l.id === selectedLang);
 
-  const toggleTag = (tagId: string) => {
-    setSelectedTags((prev) =>
-      prev.includes(tagId) ? prev.filter((t) => t !== tagId) : [...prev, tagId]
-    );
+  const personalityDesc =
+    tags.length > 0 ? tags.map((t) => t.desc).join("；") : "乐于助人，回答准确";
+
+  return `# ${creature?.emoji ?? "🤖"} ${botName}
+
+## Identity
+You are ${botName}, ${creature ? `a ${creature.label} (${creature.emoji})` : "an AI assistant"} powered by OpenClaw.
+
+## Personality
+${personalityDesc}。
+
+${customVibe ? `## Vibe\n${customVibe}\n` : ""}
+## Language
+${lang?.label ?? "中文优先"}。根据用户使用的语言自动切换回复语言。
+
+## Core Principles
+- 始终保持诚实，不确定时明确说明
+- 尊重用户隐私，不主动索取敏感信息
+- 遇到超出能力范围的问题，诚实告知并建议其他途径
+`;
+}
+
+// ─── Memory Card ──────────────────────────────────────────────────────────────
+
+interface Memory {
+  id: number;
+  title: string;
+  content: string;
+  isPinned: number;
+  category: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+function MemoryCard({
+  memory,
+  onPin,
+  onDelete,
+}: {
+  memory: Memory;
+  onPin: (id: number, pinned: boolean) => void;
+  onDelete: (id: number) => void;
+}) {
+  const categoryColors: Record<string, string> = {
+    preference: "oklch(0.78 0.18 200)",
+    fact: "oklch(0.82 0.22 140)",
+    context: "oklch(0.72 0.18 280)",
+    reminder: "oklch(0.78 0.18 65)",
+    other: "oklch(0.52 0.05 215)",
   };
-
-  const deleteMemory = (id: number) => {
-    setMemories((prev) => prev.filter((m) => m.id !== id));
-    toast.success("记忆已删除");
-  };
-
-  const togglePin = (id: number) => {
-    setMemories((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, pinned: !m.pinned } : m))
-    );
-  };
-
-  const filteredMemories = memories.filter(
-    (m) =>
-      m.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.category.includes(searchQuery)
-  );
-
-  const sortedMemories = [...filteredMemories].sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    return 0;
-  });
-
-  const generatePrompt = () => {
-    const tagDescriptions = selectedTags
-      .map((id) => personalityTags.find((t) => t.id === id)?.desc)
-      .filter(Boolean)
-      .join("；");
-    return `你是 ClawDBot，一个智能 AI 助手。你的性格特点：${tagDescriptions}。请始终保持这些特质与用户互动。`;
-  };
+  const color = categoryColors[memory.category] ?? categoryColors.other;
 
   return (
-    <div className="p-6 space-y-6 fade-in-up">
+    <div
+      className="p-4 rounded-sm transition-all duration-150"
+      style={{
+        background: memory.isPinned ? "oklch(0.78 0.18 65 / 0.04)" : "oklch(0.12 0.018 237)",
+        border: `1px solid ${memory.isPinned ? "oklch(0.78 0.18 65 / 0.35)" : "oklch(0.18 0.025 235)"}`,
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1.5">
+            {memory.isPinned === 1 && (
+              <Pin size={10} style={{ color: "oklch(0.78 0.18 65)" }} />
+            )}
+            <span
+              className="text-xs px-1.5 py-0.5 rounded-sm"
+              style={{
+                background: `${color}/0.1`,
+                border: `1px solid ${color}/0.3`,
+                color,
+                fontFamily: "'JetBrains Mono', monospace",
+              }}
+            >
+              {memory.category}
+            </span>
+          </div>
+          <div
+            className="text-sm font-medium mb-1"
+            style={{ color: "oklch(0.88 0.02 210)", fontFamily: "'IBM Plex Sans', sans-serif" }}
+          >
+            {memory.title}
+          </div>
+          <div
+            className="text-xs leading-relaxed line-clamp-2"
+            style={{ color: "oklch(0.55 0.04 215)" }}
+          >
+            {memory.content}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onClick={() => onPin(memory.id, memory.isPinned !== 1)}
+            className="w-7 h-7 flex items-center justify-center rounded-sm transition-all duration-150 hover:scale-110"
+            style={{
+              background: "oklch(0.78 0.18 65 / 0.1)",
+              border: "1px solid oklch(0.78 0.18 65 / 0.3)",
+              color: "oklch(0.78 0.18 65)",
+            }}
+          >
+            {memory.isPinned === 1 ? <PinOff size={12} /> : <Pin size={12} />}
+          </button>
+          <button
+            onClick={() => onDelete(memory.id)}
+            className="w-7 h-7 flex items-center justify-center rounded-sm transition-all duration-150 hover:scale-110"
+            style={{
+              background: "oklch(0.65 0.22 30 / 0.1)",
+              border: "1px solid oklch(0.65 0.22 30 / 0.3)",
+              color: "oklch(0.65 0.22 30)",
+            }}
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function SoulEditor() {
+  const [selectedTags, setSelectedTags] = useState<string[]>(["helpful", "concise"]);
+  const [selectedLang, setSelectedLang] = useState("zh");
+  const [selectedCreature, setSelectedCreature] = useState("lobster");
+  const [botName, setBotName] = useState("ClawDBot");
+  const [customVibe, setCustomVibe] = useState("");
+  const [soulPreview, setSoulPreview] = useState("");
+  const [showRaw, setShowRaw] = useState(false);
+
+  // Memory state
+  const [newTitle, setNewTitle] = useState("");
+  const [newContent, setNewContent] = useState("");
+  const [newCategory, setNewCategory] = useState("preference");
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  // Data fetching
+  const { data: config } = trpc.dashboard.getConfig.useQuery(undefined, { retry: 1 });
+  const {
+    data: memoriesData,
+    isLoading: memoriesLoading,
+    refetch: refetchMemories,
+  } = trpc.dashboard.getMemories.useQuery(undefined, { retry: 1 });
+
+  const saveSoulMutation = trpc.dashboard.saveSoul.useMutation({
+    onSuccess: () => toast.success("SOUL.md 已保存"),
+    onError: () => toast.error("保存失败，请重试"),
+  });
+
+  const createMemoryMutation = trpc.dashboard.createMemory.useMutation({
+    onSuccess: () => {
+      toast.success("记忆已添加");
+      setNewTitle("");
+      setNewContent("");
+      setShowAddForm(false);
+      refetchMemories();
+    },
+    onError: () => toast.error("添加失败"),
+  });
+
+  const updateMemoryMutation = trpc.dashboard.updateMemory.useMutation({
+    onSuccess: () => refetchMemories(),
+  });
+
+  const deleteMemoryMutation = trpc.dashboard.deleteMemory.useMutation({
+    onSuccess: () => {
+      toast.success("记忆已删除");
+      refetchMemories();
+    },
+  });
+
+  // Sync config to local state
+  useEffect(() => {
+    if (config) {
+      setBotName(config.botName);
+      if (config.soulMd) setSoulPreview(config.soulMd);
+    }
+  }, [config]);
+
+  // Regenerate SOUL.md preview when tags change
+  useEffect(() => {
+    const generated = generateSoulMd(
+      selectedTags,
+      selectedLang,
+      selectedCreature,
+      botName,
+      customVibe
+    );
+    setSoulPreview(generated);
+  }, [selectedTags, selectedLang, selectedCreature, botName, customVibe]);
+
+  const toggleTag = (id: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]
+    );
+  };
+
+  const handleSaveSoul = () => {
+    saveSoulMutation.mutate({ soulMd: soulPreview });
+  };
+
+  const handleAddMemory = () => {
+    if (!newTitle.trim() || !newContent.trim()) {
+      toast.error("标题和内容不能为空");
+      return;
+    }
+    createMemoryMutation.mutate({
+      title: newTitle.trim(),
+      content: newContent.trim(),
+      category: newCategory,
+      isPinned: false,
+    });
+  };
+
+  const handlePinMemory = (id: number, pinned: boolean) => {
+    updateMemoryMutation.mutate({ id, isPinned: pinned });
+  };
+
+  const handleDeleteMemory = (id: number) => {
+    deleteMemoryMutation.mutate({ id });
+  };
+
+  const memories = memoriesData ?? [];
+
+  return (
+    <div className="p-6 space-y-6">
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <div>
+          <div
+            className="text-xs mb-1"
+            style={{ color: "oklch(0.72 0.18 280)", fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            SOUL & MEMORY / EDITOR
+          </div>
           <h1
             className="text-2xl font-bold"
             style={{ fontFamily: "'Space Mono', monospace", color: "oklch(0.92 0.02 210)" }}
           >
-            SOUL & MEMORY
+            灵魂与记忆
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: "oklch(0.52 0.05 215)" }}>
-            定制 AI 人格 · 管理长期记忆
-          </p>
         </div>
-        <div
-          className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-sm cursor-pointer transition-all"
-          onClick={() => setShowPrompt(!showPrompt)}
+        <button
+          onClick={handleSaveSoul}
+          disabled={saveSoulMutation.isPending}
+          className="flex items-center gap-2 px-4 py-2 text-sm rounded-sm transition-all duration-150 hover:scale-105 disabled:opacity-50"
           style={{
-            background: "oklch(0.72 0.18 280 / 0.1)",
-            border: "1px solid oklch(0.72 0.18 280 / 0.3)",
+            background: "oklch(0.72 0.18 280 / 0.15)",
+            border: "1px solid oklch(0.72 0.18 280 / 0.5)",
             color: "oklch(0.72 0.18 280)",
             fontFamily: "'JetBrains Mono', monospace",
           }}
         >
-          {showPrompt ? <EyeOff size={12} /> : <Eye size={12} />}
-          {showPrompt ? "隐藏 Prompt" : "预览 Prompt"}
-        </div>
+          {saveSoulMutation.isPending ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Save size={14} />
+          )}
+          保存 SOUL.md
+        </button>
       </div>
 
-      {/* Prompt 预览 */}
-      {showPrompt && (
-        <div
-          className="panel-card p-4 fade-in-up"
-          style={{ borderColor: "oklch(0.72 0.18 280 / 0.4)" }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles size={14} style={{ color: "oklch(0.72 0.18 280)" }} />
-            <span
-              className="text-xs font-medium uppercase tracking-widest"
-              style={{ color: "oklch(0.72 0.18 280)", fontFamily: "'JetBrains Mono', monospace" }}
-            >
-              GENERATED SYSTEM PROMPT
-            </span>
-          </div>
-          <div
-            className="text-sm p-3 rounded-sm"
-            style={{
-              background: "oklch(0.08 0.014 238)",
-              border: "1px solid oklch(0.18 0.025 235)",
-              color: "oklch(0.75 0.04 210)",
-              fontFamily: "'JetBrains Mono', monospace",
-              lineHeight: 1.7,
-            }}
-          >
-            {generatePrompt()}
-          </div>
-          <div className="mt-2 text-xs" style={{ color: "oklch(0.38 0.04 220)" }}>
-            * 此 Prompt 由选中的性格标签自动生成，保存后将写入 config.json
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 灵魂编辑器 */}
-        <div className="space-y-4">
-          <div className="panel-card p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Brain size={16} style={{ color: "oklch(0.78 0.18 200)" }} />
-              <span
-                className="text-xs font-medium uppercase tracking-widest"
-                style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                SOUL EDITOR · 性格标签
-              </span>
-              <span
-                className="ml-auto text-xs"
-                style={{ color: "oklch(0.78 0.18 200)", fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                {selectedTags.length}/{personalityTags.length} 已选
-              </span>
+        {/* 左列：性格配置 */}
+        <div className="space-y-5">
+          {/* Bot 基础信息 */}
+          <div className="panel-card p-5">
+            <div
+              className="text-xs font-medium uppercase tracking-widest mb-3"
+              style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              BOT IDENTITY
             </div>
+            <div className="space-y-3">
+              <div>
+                <label
+                  className="text-xs mb-1.5 block"
+                  style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
+                >
+                  Bot 名称
+                </label>
+                <input
+                  value={botName}
+                  onChange={(e) => setBotName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-sm outline-none"
+                  style={{
+                    background: "oklch(0.12 0.018 237)",
+                    border: "1px solid oklch(0.22 0.03 230)",
+                    color: "oklch(0.88 0.02 210)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                  placeholder="ClawDBot"
+                />
+              </div>
+              <div>
+                <label
+                  className="text-xs mb-1.5 block"
+                  style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
+                >
+                  自定义 Vibe（可选）
+                </label>
+                <input
+                  value={customVibe}
+                  onChange={(e) => setCustomVibe(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-sm outline-none"
+                  style={{
+                    background: "oklch(0.12 0.018 237)",
+                    border: "1px solid oklch(0.22 0.03 230)",
+                    color: "oklch(0.88 0.02 210)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                  placeholder="例如：像一位老朋友一样聊天..."
+                />
+              </div>
+            </div>
+          </div>
 
+          {/* 形象选择 */}
+          <div className="panel-card p-5">
+            <div
+              className="text-xs font-medium uppercase tracking-widest mb-3"
+              style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              CREATURE FORM
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {CREATURE_PRESETS.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setSelectedCreature(c.id)}
+                  className="p-3 rounded-sm text-center transition-all duration-150 hover:scale-105"
+                  style={{
+                    background:
+                      selectedCreature === c.id
+                        ? "oklch(0.72 0.18 280 / 0.15)"
+                        : "oklch(0.12 0.018 237)",
+                    border: `1px solid ${
+                      selectedCreature === c.id
+                        ? "oklch(0.72 0.18 280 / 0.5)"
+                        : "oklch(0.18 0.025 235)"
+                    }`,
+                  }}
+                >
+                  <div className="text-2xl mb-1">{c.emoji}</div>
+                  <div
+                    className="text-xs"
+                    style={{
+                      color:
+                        selectedCreature === c.id
+                          ? "oklch(0.72 0.18 280)"
+                          : "oklch(0.52 0.05 215)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    {c.label}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 性格标签 */}
+          <div className="panel-card p-5">
+            <div
+              className="text-xs font-medium uppercase tracking-widest mb-3"
+              style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              PERSONALITY TAGS ({selectedTags.length} 已选)
+            </div>
             <div className="grid grid-cols-2 gap-2">
-              {personalityTags.map((tag) => {
-                const isSelected = selectedTags.includes(tag.id);
+              {PERSONALITY_TAGS.map((tag) => {
+                const active = selectedTags.includes(tag.id);
                 return (
                   <button
                     key={tag.id}
                     onClick={() => toggleTag(tag.id)}
-                    className="flex items-start gap-2 p-3 rounded-sm text-left transition-all duration-150"
+                    className="flex items-center gap-2 p-2.5 rounded-sm text-left transition-all duration-150"
                     style={{
-                      background: isSelected ? "oklch(0.78 0.18 200 / 0.12)" : "oklch(0.14 0.015 235)",
-                      border: `1px solid ${isSelected ? "oklch(0.78 0.18 200 / 0.6)" : "oklch(0.22 0.03 230)"}`,
-                      boxShadow: isSelected ? "0 0 12px oklch(0.78 0.18 200 / 0.1)" : "none",
+                      background: active
+                        ? "oklch(0.72 0.18 280 / 0.12)"
+                        : "oklch(0.12 0.018 237)",
+                      border: `1px solid ${
+                        active ? "oklch(0.72 0.18 280 / 0.4)" : "oklch(0.18 0.025 235)"
+                      }`,
                     }}
                   >
-                    <span className="text-base flex-shrink-0 mt-0.5">{tag.emoji}</span>
+                    <span className="text-base">{tag.emoji}</span>
                     <div>
                       <div
-                        className="text-sm font-medium"
+                        className="text-xs font-medium"
                         style={{
-                          color: isSelected ? "oklch(0.78 0.18 200)" : "oklch(0.75 0.04 210)",
+                          color: active ? "oklch(0.72 0.18 280)" : "oklch(0.75 0.04 210)",
                           fontFamily: "'IBM Plex Sans', sans-serif",
                         }}
                       >
                         {tag.label}
                       </div>
-                      <div
-                        className="text-xs mt-0.5"
-                        style={{ color: "oklch(0.45 0.04 220)" }}
-                      >
-                        {tag.desc}
-                      </div>
                     </div>
-                    {isSelected && (
-                      <div
-                        className="ml-auto flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center"
-                        style={{ background: "oklch(0.78 0.18 200)" }}
-                      >
-                        <div className="w-2 h-2 rounded-full" style={{ background: "oklch(0.08 0.015 240)" }} />
-                      </div>
-                    )}
                   </button>
                 );
               })}
             </div>
+          </div>
 
-            <button
-              onClick={() => toast.success("灵魂配置已保存！config.json 已更新。")}
-              className="w-full mt-4 py-2.5 text-sm font-medium rounded-sm transition-all duration-150"
-              style={{
-                background: "oklch(0.78 0.18 200 / 0.15)",
-                border: "1px solid oklch(0.78 0.18 200 / 0.5)",
-                color: "oklch(0.78 0.18 200)",
-                fontFamily: "'JetBrains Mono', monospace",
-                letterSpacing: "0.1em",
-              }}
+          {/* 语言偏好 */}
+          <div className="panel-card p-5">
+            <div
+              className="text-xs font-medium uppercase tracking-widest mb-3"
+              style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
             >
-              SAVE SOUL CONFIG
-            </button>
+              LANGUAGE PREFERENCE
+            </div>
+            <div className="flex gap-2">
+              {LANGUAGE_TAGS.map((lang) => (
+                <button
+                  key={lang.id}
+                  onClick={() => setSelectedLang(lang.id)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-sm transition-all duration-150"
+                  style={{
+                    background:
+                      selectedLang === lang.id
+                        ? "oklch(0.78 0.18 200 / 0.12)"
+                        : "oklch(0.12 0.018 237)",
+                    border: `1px solid ${
+                      selectedLang === lang.id
+                        ? "oklch(0.78 0.18 200 / 0.4)"
+                        : "oklch(0.18 0.025 235)"
+                    }`,
+                    color:
+                      selectedLang === lang.id
+                        ? "oklch(0.78 0.18 200)"
+                        : "oklch(0.52 0.05 215)",
+                  }}
+                >
+                  <span>{lang.emoji}</span>
+                  <span
+                    className="text-xs"
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  >
+                    {lang.label}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* 记忆图谱 */}
-        <div className="space-y-4">
-          <div className="panel-card p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Tag size={16} style={{ color: "oklch(0.82 0.22 140)" }} />
-              <span
+        {/* 右列：SOUL.md 预览 + 记忆管理 */}
+        <div className="space-y-5">
+          {/* SOUL.md 预览 */}
+          <div className="panel-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div
                 className="text-xs font-medium uppercase tracking-widest"
                 style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
               >
-                MEMORY ATLAS · {memories.length} 条记忆
-              </span>
-            </div>
-
-            {/* 搜索框 */}
-            <div className="relative mb-3">
-              <Search
-                size={12}
-                className="absolute left-3 top-1/2 -translate-y-1/2"
-                style={{ color: "oklch(0.52 0.05 215)" }}
-              />
-              <input
-                type="text"
-                placeholder="搜索记忆..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 text-xs rounded-sm outline-none"
-                style={{
-                  background: "oklch(0.14 0.015 235)",
-                  border: "1px solid oklch(0.22 0.03 230)",
-                  color: "oklch(0.78 0.02 210)",
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}
-              />
-            </div>
-
-            {/* 记忆卡片列表 */}
-            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-              {sortedMemories.map((memory) => (
-                <div
-                  key={memory.id}
-                  className="p-3 rounded-sm transition-all duration-150 group"
+                SOUL.md PREVIEW
+              </div>
+              <div className="flex items-center gap-2">
+                <Sparkles size={12} style={{ color: "oklch(0.72 0.18 280)" }} />
+                <button
+                  onClick={() => setShowRaw(!showRaw)}
+                  className="text-xs flex items-center gap-1"
                   style={{
-                    background: memory.pinned ? "oklch(0.78 0.18 200 / 0.06)" : "oklch(0.14 0.015 235)",
-                    border: `1px solid ${memory.pinned ? "oklch(0.78 0.18 200 / 0.25)" : "oklch(0.22 0.03 230)"}`,
+                    color: "oklch(0.52 0.05 215)",
+                    fontFamily: "'JetBrains Mono', monospace",
                   }}
                 >
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span
-                          className="tag-chip text-xs"
-                          style={{
-                            borderColor: `${categoryColors[memory.category] || "oklch(0.52 0.05 215)"}/0.4`,
-                            color: categoryColors[memory.category] || "oklch(0.52 0.05 215)",
-                          }}
-                        >
-                          {memory.category}
-                        </span>
-                        {memory.pinned && (
-                          <span className="text-xs" style={{ color: "oklch(0.78 0.18 200)" }}>
-                            📌 置顶
-                          </span>
-                        )}
-                      </div>
-                      <p
-                        className="text-xs leading-relaxed"
-                        style={{ color: "oklch(0.72 0.04 210)" }}
-                      >
-                        {memory.content}
-                      </p>
-                      <div
-                        className="text-xs mt-1"
-                        style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
-                      >
-                        {memory.time}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <button
-                        onClick={() => togglePin(memory.id)}
-                        className="p-1 rounded-sm transition-colors"
-                        style={{ color: memory.pinned ? "oklch(0.78 0.18 200)" : "oklch(0.52 0.05 215)" }}
-                      >
-                        <Pin size={12} />
-                      </button>
-                      <button
-                        onClick={() => deleteMemory(memory.id)}
-                        className="p-1 rounded-sm transition-colors"
-                        style={{ color: "oklch(0.62 0.22 25)" }}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {sortedMemories.length === 0 && (
-                <div
-                  className="text-center py-8 text-xs"
-                  style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
-                >
-                  未找到匹配的记忆
-                </div>
-              )}
+                  {showRaw ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  {showRaw ? "折叠" : "展开原文"}
+                </button>
+              </div>
             </div>
-
-            <button
-              onClick={() => toast.info("手动添加记忆功能即将推出")}
-              className="w-full mt-3 py-2 text-xs rounded-sm flex items-center justify-center gap-2 transition-all duration-150"
+            <div
+              className="rounded-sm p-3 text-xs leading-relaxed overflow-auto"
               style={{
-                background: "transparent",
-                border: "1px dashed oklch(0.28 0.03 230)",
-                color: "oklch(0.45 0.04 220)",
+                background: "oklch(0.08 0.012 240)",
+                border: "1px solid oklch(0.18 0.025 235)",
+                color: "oklch(0.72 0.18 280)",
                 fontFamily: "'JetBrains Mono', monospace",
+                maxHeight: showRaw ? "none" : "280px",
+                whiteSpace: "pre-wrap",
               }}
             >
-              <Plus size={12} />
-              手动添加记忆
-            </button>
+              {soulPreview}
+            </div>
+            <div
+              className="mt-2 text-xs"
+              style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              此内容将保存到 SOUL.md，作为 ClawDBot 的系统提示词
+            </div>
+          </div>
+
+          {/* 记忆管理 */}
+          <div className="panel-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div
+                className="text-xs font-medium uppercase tracking-widest"
+                style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
+              >
+                MEMORY ATLAS ({memories.length})
+              </div>
+              <div className="flex items-center gap-2">
+                {memoriesLoading && (
+                  <Loader2
+                    size={12}
+                    className="animate-spin"
+                    style={{ color: "oklch(0.52 0.05 215)" }}
+                  />
+                )}
+                <button
+                  onClick={() => setShowAddForm(!showAddForm)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm transition-all duration-150"
+                  style={{
+                    background: "oklch(0.82 0.22 140 / 0.1)",
+                    border: "1px solid oklch(0.82 0.22 140 / 0.4)",
+                    color: "oklch(0.82 0.22 140)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  <Plus size={12} />
+                  添加记忆
+                </button>
+              </div>
+            </div>
+
+            {/* 添加表单 */}
+            {showAddForm && (
+              <div
+                className="mb-4 p-3 rounded-sm space-y-2"
+                style={{
+                  background: "oklch(0.10 0.015 238)",
+                  border: "1px solid oklch(0.20 0.028 232)",
+                }}
+              >
+                <input
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="记忆标题..."
+                  className="w-full px-3 py-2 text-xs rounded-sm outline-none"
+                  style={{
+                    background: "oklch(0.12 0.018 237)",
+                    border: "1px solid oklch(0.22 0.03 230)",
+                    color: "oklch(0.88 0.02 210)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                />
+                <textarea
+                  value={newContent}
+                  onChange={(e) => setNewContent(e.target.value)}
+                  placeholder="记忆内容..."
+                  rows={3}
+                  className="w-full px-3 py-2 text-xs rounded-sm outline-none resize-none"
+                  style={{
+                    background: "oklch(0.12 0.018 237)",
+                    border: "1px solid oklch(0.22 0.03 230)",
+                    color: "oklch(0.88 0.02 210)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                />
+                <div className="flex items-center gap-2">
+                  <select
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    className="flex-1 px-2 py-1.5 text-xs rounded-sm outline-none"
+                    style={{
+                      background: "oklch(0.12 0.018 237)",
+                      border: "1px solid oklch(0.22 0.03 230)",
+                      color: "oklch(0.88 0.02 210)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    <option value="preference">偏好</option>
+                    <option value="fact">事实</option>
+                    <option value="context">背景</option>
+                    <option value="reminder">提醒</option>
+                    <option value="other">其他</option>
+                  </select>
+                  <button
+                    onClick={handleAddMemory}
+                    disabled={createMemoryMutation.isPending}
+                    className="px-3 py-1.5 text-xs rounded-sm transition-all duration-150 disabled:opacity-50"
+                    style={{
+                      background: "oklch(0.82 0.22 140 / 0.15)",
+                      border: "1px solid oklch(0.82 0.22 140 / 0.5)",
+                      color: "oklch(0.82 0.22 140)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    {createMemoryMutation.isPending ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      "保存"
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 记忆列表 */}
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {memories.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-2">
+                  <Brain
+                    size={28}
+                    style={{ color: "oklch(0.38 0.04 220)", opacity: 0.5 }}
+                  />
+                  <div
+                    className="text-xs"
+                    style={{
+                      color: "oklch(0.45 0.04 220)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    暂无记忆条目
+                  </div>
+                  <div
+                    className="text-xs text-center"
+                    style={{ color: "oklch(0.38 0.04 220)" }}
+                  >
+                    ClawDBot 会在对话中自动积累记忆，
+                    <br />
+                    或点击"添加记忆"手动创建
+                  </div>
+                </div>
+              ) : (
+                memories.map((m) => (
+                  <MemoryCard
+                    key={m.id}
+                    memory={m}
+                    onPin={handlePinMemory}
+                    onDelete={handleDeleteMemory}
+                  />
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -1,204 +1,433 @@
 /*
- * iClawd SkillStore - 技能商店
- * 
- * 功能：技能浏览、一键安装、已安装管理
- * 风格：工业终端，六边形图标，应用商店布局
+ * iClawd Skill Store - OpenClaw Skills 管理
+ *
+ * 功能：
+ *  - 展示 OpenClaw 支持的技能列表（对齐 openclawd skills 配置）
+ *  - 一键安装/卸载技能
+ *  - 技能 API Key 配置（如需要）
+ *  - 保存到后端 tRPC API → openclawd skillsJson
  */
 
-import { useState } from "react";
-import { Zap, Download, CheckCircle, Search, Filter, Star, Package, Globe, Image, Calendar, Music, Code, FileText, Bot, Cpu, Shield } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  Zap,
+  Check,
+  Loader2,
+  Search,
+  ExternalLink,
+  Key,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
-const skillCategories = ["全部", "搜索", "创作", "工具", "通讯", "数据"];
+// ─── Skill Catalog ────────────────────────────────────────────────────────────
 
-const skills = [
+interface SkillDef {
+  id: string;
+  name: string;
+  emoji: string;
+  desc: string;
+  category: "search" | "media" | "productivity" | "dev" | "communication";
+  requiresKey: boolean;
+  keyLabel?: string;
+  keyPlaceholder?: string;
+  popular?: boolean;
+}
+
+const SKILLS: SkillDef[] = [
   {
-    id: "web-search",
-    name: "网页搜索",
-    desc: "实时搜索互联网，获取最新信息",
-    icon: Globe,
-    category: "搜索",
-    rating: 4.9,
-    installs: "12.4k",
-    installed: true,
-    color: "oklch(0.78 0.18 200)",
-    version: "2.1.0",
-    author: "官方",
+    id: "web_search",
+    name: "网络搜索",
+    emoji: "🔍",
+    desc: "让 ClawDBot 能够实时搜索互联网，获取最新信息",
+    category: "search",
+    requiresKey: true,
+    keyLabel: "Tavily API Key",
+    keyPlaceholder: "tvly-...",
+    popular: true,
   },
   {
-    id: "image-gen",
-    name: "AI 绘图",
-    desc: "使用 DALL-E / Stable Diffusion 生成图像",
-    icon: Image,
-    category: "创作",
-    rating: 4.7,
-    installs: "8.2k",
-    installed: true,
-    color: "oklch(0.72 0.18 280)",
-    version: "1.5.2",
-    author: "官方",
+    id: "image_generation",
+    name: "图像生成",
+    emoji: "🎨",
+    desc: "通过 DALL-E 或 Stable Diffusion 生成图片",
+    category: "media",
+    requiresKey: true,
+    keyLabel: "OpenAI API Key",
+    keyPlaceholder: "sk-...",
+    popular: true,
+  },
+  {
+    id: "code_execution",
+    name: "代码执行",
+    emoji: "💻",
+    desc: "在安全沙盒中运行 Python/JavaScript 代码",
+    category: "dev",
+    requiresKey: false,
+    popular: true,
+  },
+  {
+    id: "weather",
+    name: "天气查询",
+    emoji: "🌤️",
+    desc: "查询全球任意城市的实时天气和预报",
+    category: "search",
+    requiresKey: true,
+    keyLabel: "OpenWeather API Key",
+    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   },
   {
     id: "calendar",
-    name: "日历助手",
-    desc: "管理日程、设置提醒、查看日历",
-    icon: Calendar,
-    category: "工具",
-    rating: 4.5,
-    installs: "5.1k",
-    installed: false,
-    color: "oklch(0.78 0.18 65)",
-    version: "1.2.0",
-    author: "社区",
+    name: "日历管理",
+    emoji: "📅",
+    desc: "读写 Google Calendar，管理日程和提醒",
+    category: "productivity",
+    requiresKey: true,
+    keyLabel: "Google OAuth Token",
+    keyPlaceholder: "ya29...",
   },
   {
-    id: "music",
-    name: "音乐播放",
-    desc: "控制 Spotify / 网易云，搜索播放音乐",
-    icon: Music,
-    category: "通讯",
-    rating: 4.3,
-    installs: "3.8k",
-    installed: false,
-    color: "oklch(0.82 0.22 140)",
-    version: "1.0.5",
-    author: "社区",
+    id: "email",
+    name: "邮件助手",
+    emoji: "📧",
+    desc: "通过 Gmail 收发邮件，自动回复和整理",
+    category: "communication",
+    requiresKey: true,
+    keyLabel: "Gmail OAuth Token",
+    keyPlaceholder: "ya29...",
   },
   {
-    id: "code-exec",
-    name: "代码执行",
-    desc: "在沙箱中运行 Python/JS 代码，返回结果",
-    icon: Code,
-    category: "数据",
-    rating: 4.8,
-    installs: "9.7k",
-    installed: true,
-    color: "oklch(0.78 0.18 200)",
-    version: "3.0.1",
-    author: "官方",
+    id: "file_manager",
+    name: "文件管理",
+    emoji: "📁",
+    desc: "读取和操作本地文件系统中的文件",
+    category: "productivity",
+    requiresKey: false,
   },
   {
-    id: "doc-reader",
-    name: "文档解析",
-    desc: "读取 PDF、Word、Excel 等文档内容",
-    icon: FileText,
-    category: "工具",
-    rating: 4.6,
-    installs: "7.3k",
-    installed: false,
-    color: "oklch(0.78 0.18 65)",
-    version: "2.0.0",
-    author: "官方",
+    id: "browser",
+    name: "浏览器控制",
+    emoji: "🌐",
+    desc: "控制浏览器访问网页，提取内容和截图",
+    category: "dev",
+    requiresKey: false,
   },
   {
-    id: "multi-bot",
-    name: "多 Bot 协作",
-    desc: "协调多个 AI Agent 并行处理任务",
-    icon: Bot,
-    category: "工具",
-    rating: 4.4,
-    installs: "2.1k",
-    installed: false,
-    color: "oklch(0.72 0.18 280)",
-    version: "0.9.0-beta",
-    author: "社区",
+    id: "github",
+    name: "GitHub 集成",
+    emoji: "🐙",
+    desc: "查看仓库、Issues、PR，自动化代码工作流",
+    category: "dev",
+    requiresKey: true,
+    keyLabel: "GitHub Personal Access Token",
+    keyPlaceholder: "ghp_...",
   },
   {
-    id: "data-analysis",
-    name: "数据分析",
-    desc: "分析 CSV/JSON 数据，生成可视化图表",
-    icon: Cpu,
-    category: "数据",
-    rating: 4.7,
-    installs: "6.5k",
-    installed: false,
-    color: "oklch(0.82 0.22 140)",
-    version: "1.8.0",
-    author: "官方",
+    id: "notion",
+    name: "Notion 集成",
+    emoji: "📝",
+    desc: "读写 Notion 数据库和页面，管理知识库",
+    category: "productivity",
+    requiresKey: true,
+    keyLabel: "Notion Integration Token",
+    keyPlaceholder: "secret_...",
   },
   {
-    id: "security-scan",
-    name: "安全扫描",
-    desc: "检测 URL 安全性，过滤恶意内容",
-    icon: Shield,
-    category: "工具",
-    rating: 4.2,
-    installs: "1.9k",
-    installed: false,
-    color: "oklch(0.62 0.22 25)",
-    version: "1.1.0",
-    author: "社区",
+    id: "telegram_notify",
+    name: "Telegram 通知",
+    emoji: "📨",
+    desc: "主动向指定 Telegram 频道发送通知消息",
+    category: "communication",
+    requiresKey: false,
+  },
+  {
+    id: "calculator",
+    name: "高级计算",
+    emoji: "🧮",
+    desc: "执行复杂数学计算、统计分析和单位换算",
+    category: "productivity",
+    requiresKey: false,
   },
 ];
 
-export default function SkillStore() {
-  const [activeCategory, setActiveCategory] = useState("全部");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [installedSkills, setInstalledSkills] = useState<string[]>(
-    skills.filter((s) => s.installed).map((s) => s.id)
-  );
-  const [installingSkill, setInstallingSkill] = useState<string | null>(null);
+const CATEGORY_LABELS: Record<string, string> = {
+  all: "全部",
+  search: "搜索",
+  media: "媒体",
+  productivity: "效率",
+  dev: "开发",
+  communication: "通讯",
+};
 
-  const handleInstall = (skillId: string, skillName: string) => {
-    if (installedSkills.includes(skillId)) {
-      setInstalledSkills((prev) => prev.filter((id) => id !== skillId));
-      toast.success(`${skillName} 已卸载`);
-      return;
+// ─── Skill Card ───────────────────────────────────────────────────────────────
+
+function SkillCard({
+  skill,
+  enabled,
+  apiKey,
+  onToggle,
+  onKeyChange,
+}: {
+  skill: SkillDef;
+  enabled: boolean;
+  apiKey: string;
+  onToggle: (id: string, enabled: boolean) => void;
+  onKeyChange: (id: string, key: string) => void;
+}) {
+  const [showKey, setShowKey] = useState(false);
+
+  const categoryColors: Record<string, string> = {
+    search: "oklch(0.78 0.18 200)",
+    media: "oklch(0.72 0.18 280)",
+    productivity: "oklch(0.82 0.22 140)",
+    dev: "oklch(0.78 0.18 65)",
+    communication: "oklch(0.75 0.18 340)",
+  };
+  const color = categoryColors[skill.category] ?? "oklch(0.52 0.05 215)";
+
+  return (
+    <div
+      className="p-4 rounded-sm transition-all duration-200"
+      style={{
+        background: enabled ? `${color}/0.04` : "oklch(0.11 0.016 236)",
+        border: `1px solid ${enabled ? `${color}/0.35` : "oklch(0.18 0.025 235)"}`,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="w-10 h-10 rounded-sm flex items-center justify-center flex-shrink-0 text-xl"
+          style={{
+            background: enabled ? `${color}/0.15` : "oklch(0.12 0.018 237)",
+            border: `1px solid ${enabled ? `${color}/0.4` : "oklch(0.18 0.025 235)"}`,
+          }}
+        >
+          {skill.emoji}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-sm font-medium"
+                  style={{
+                    color: "oklch(0.88 0.02 210)",
+                    fontFamily: "'IBM Plex Sans', sans-serif",
+                  }}
+                >
+                  {skill.name}
+                </span>
+                {skill.popular && (
+                  <span
+                    className="text-xs px-1.5 py-0.5 rounded-sm"
+                    style={{
+                      background: "oklch(0.78 0.18 65 / 0.1)",
+                      border: "1px solid oklch(0.78 0.18 65 / 0.3)",
+                      color: "oklch(0.78 0.18 65)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    热门
+                  </span>
+                )}
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: "oklch(0.52 0.05 215)" }}>
+                {skill.desc}
+              </div>
+            </div>
+            <button
+              onClick={() => onToggle(skill.id, !enabled)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-sm transition-all duration-150 flex-shrink-0 hover:scale-105"
+              style={{
+                background: enabled ? `${color}/0.15` : "oklch(0.12 0.018 237)",
+                border: `1px solid ${enabled ? `${color}/0.5` : "oklch(0.22 0.03 230)"}`,
+                color: enabled ? color : "oklch(0.52 0.05 215)",
+                fontFamily: "'JetBrains Mono', monospace",
+              }}
+            >
+              {enabled ? <Check size={11} /> : <Zap size={11} />}
+              {enabled ? "已安装" : "安装"}
+            </button>
+          </div>
+
+          {/* API Key 配置 */}
+          {enabled && skill.requiresKey && (
+            <div className="mt-3">
+              <button
+                onClick={() => setShowKey(!showKey)}
+                className="flex items-center gap-1.5 text-xs mb-2"
+                style={{
+                  color: "oklch(0.52 0.05 215)",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
+              >
+                <Key size={11} />
+                {skill.keyLabel}
+                {showKey ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                {apiKey && (
+                  <span style={{ color: "oklch(0.82 0.22 140)" }}>✓ 已配置</span>
+                )}
+              </button>
+              {showKey && (
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => onKeyChange(skill.id, e.target.value)}
+                  placeholder={skill.keyPlaceholder}
+                  className="w-full px-3 py-2 text-xs rounded-sm outline-none"
+                  style={{
+                    background: "oklch(0.10 0.015 238)",
+                    border: "1px solid oklch(0.22 0.03 230)",
+                    color: "oklch(0.88 0.02 210)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function SkillStore() {
+  const [activeCategory, setActiveCategory] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [skillStates, setSkillStates] = useState<Record<string, boolean>>({});
+  const [skillKeys, setSkillKeys] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  const { data: config, isLoading } = trpc.dashboard.getConfig.useQuery(undefined, {
+    retry: 1,
+  });
+
+  const saveSkillsMutation = trpc.dashboard.saveSkills.useMutation({
+    onSuccess: () => {
+      toast.success("技能配置已保存");
+      setIsSaving(false);
+    },
+    onError: () => {
+      toast.error("保存失败，请重试");
+      setIsSaving(false);
+    },
+  });
+
+  // Sync from config
+  useEffect(() => {
+    if (config?.skills) {
+      try {
+        const entries = (config.skills as Record<string, unknown>).entries as
+          | Record<string, { enabled: boolean; apiKey?: string }>
+          | undefined;
+        if (entries) {
+          const states: Record<string, boolean> = {};
+          const keys: Record<string, string> = {};
+          for (const [id, val] of Object.entries(entries)) {
+            states[id] = val.enabled;
+            if (val.apiKey) keys[id] = val.apiKey;
+          }
+          setSkillStates(states);
+          setSkillKeys(keys);
+        }
+      } catch {
+        // ignore
+      }
     }
-    setInstallingSkill(skillId);
-    toast.info(`正在安装 ${skillName}...`, { duration: 2000 });
-    setTimeout(() => {
-      setInstalledSkills((prev) => [...prev, skillId]);
-      setInstallingSkill(null);
-      toast.success(`${skillName} 安装成功！config.json 已更新。`);
-    }, 2500);
+  }, [config]);
+
+  const handleToggle = (id: string, enabled: boolean) => {
+    setSkillStates((prev) => ({ ...prev, [id]: enabled }));
+    if (!enabled) {
+      setSkillKeys((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
   };
 
-  const filteredSkills = skills.filter((skill) => {
-    const matchCategory = activeCategory === "全部" || skill.category === activeCategory;
+  const handleKeyChange = (id: string, key: string) => {
+    setSkillKeys((prev) => ({ ...prev, [id]: key }));
+  };
+
+  const handleSave = () => {
+    setIsSaving(true);
+    const entries: Record<string, { enabled: boolean; apiKey?: string }> = {};
+    for (const skill of SKILLS) {
+      if (skillStates[skill.id]) {
+        entries[skill.id] = {
+          enabled: true,
+          ...(skillKeys[skill.id] && { apiKey: skillKeys[skill.id] }),
+        };
+      }
+    }
+    saveSkillsMutation.mutate({ entries });
+  };
+
+  const filteredSkills = SKILLS.filter((s) => {
+    const matchCategory = activeCategory === "all" || s.category === activeCategory;
     const matchSearch =
-      skill.name.includes(searchQuery) || skill.desc.includes(searchQuery);
+      !searchQuery ||
+      s.name.includes(searchQuery) ||
+      s.desc.includes(searchQuery) ||
+      s.id.includes(searchQuery.toLowerCase());
     return matchCategory && matchSearch;
   });
 
-  const installedCount = installedSkills.length;
+  const installedCount = Object.values(skillStates).filter(Boolean).length;
 
   return (
-    <div className="p-6 space-y-6 fade-in-up">
+    <div className="p-6 space-y-6">
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1
-            className="text-2xl font-bold"
-            style={{ fontFamily: "'Space Mono', monospace", color: "oklch(0.92 0.02 210)" }}
-          >
-            SKILL GALLERY
-          </h1>
-          <p className="text-sm mt-0.5" style={{ color: "oklch(0.52 0.05 215)" }}>
-            扩展 AI 能力 · 已安装 {installedCount} 个技能
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
           <div
-            className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-sm"
+            className="text-xs mb-1"
             style={{
-              background: "oklch(0.82 0.22 140 / 0.1)",
-              border: "1px solid oklch(0.82 0.22 140 / 0.3)",
               color: "oklch(0.82 0.22 140)",
               fontFamily: "'JetBrains Mono', monospace",
             }}
           >
-            <Package size={12} />
-            {installedCount} INSTALLED
+            SKILL GALLERY / STORE
           </div>
+          <h1
+            className="text-2xl font-bold"
+            style={{
+              fontFamily: "'Space Mono', monospace",
+              color: "oklch(0.92 0.02 210)",
+            }}
+          >
+            技能商店
+          </h1>
+          <p className="text-sm mt-0.5" style={{ color: "oklch(0.52 0.05 215)" }}>
+            已安装 {installedCount}/{SKILLS.length} 个技能
+          </p>
         </div>
+        <button
+          onClick={handleSave}
+          disabled={isSaving || saveSkillsMutation.isPending}
+          className="flex items-center gap-2 px-4 py-2 text-sm rounded-sm transition-all duration-150 hover:scale-105 disabled:opacity-50"
+          style={{
+            background: "oklch(0.82 0.22 140 / 0.15)",
+            border: "1px solid oklch(0.82 0.22 140 / 0.5)",
+            color: "oklch(0.82 0.22 140)",
+            fontFamily: "'JetBrains Mono', monospace",
+          }}
+        >
+          {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+          保存配置
+        </button>
       </div>
 
-      {/* 搜索和过滤栏 */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
+      {/* 搜索 + 分类过滤 */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-48">
           <Search
-            size={12}
+            size={13}
             className="absolute left-3 top-1/2 -translate-y-1/2"
             style={{ color: "oklch(0.52 0.05 215)" }}
           />
@@ -207,139 +436,92 @@ export default function SkillStore() {
             placeholder="搜索技能..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 text-xs rounded-sm outline-none"
+            className="w-full pl-8 pr-3 py-2 text-sm rounded-sm outline-none"
             style={{
-              background: "oklch(0.11 0.018 235)",
+              background: "oklch(0.12 0.018 237)",
               border: "1px solid oklch(0.22 0.03 230)",
-              color: "oklch(0.78 0.02 210)",
+              color: "oklch(0.88 0.02 210)",
               fontFamily: "'JetBrains Mono', monospace",
             }}
           />
         </div>
-        <div className="flex items-center gap-1">
-          {skillCategories.map((cat) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
             <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
+              key={key}
+              onClick={() => setActiveCategory(key)}
               className="px-3 py-1.5 text-xs rounded-sm transition-all duration-150"
               style={{
-                background: activeCategory === cat ? "oklch(0.78 0.18 200 / 0.15)" : "transparent",
-                border: `1px solid ${activeCategory === cat ? "oklch(0.78 0.18 200 / 0.5)" : "oklch(0.22 0.03 230)"}`,
-                color: activeCategory === cat ? "oklch(0.78 0.18 200)" : "oklch(0.52 0.05 215)",
+                background:
+                  activeCategory === key
+                    ? "oklch(0.82 0.22 140 / 0.15)"
+                    : "oklch(0.12 0.018 237)",
+                border: `1px solid ${
+                  activeCategory === key
+                    ? "oklch(0.82 0.22 140 / 0.5)"
+                    : "oklch(0.18 0.025 235)"
+                }`,
+                color:
+                  activeCategory === key
+                    ? "oklch(0.82 0.22 140)"
+                    : "oklch(0.52 0.05 215)",
                 fontFamily: "'JetBrains Mono', monospace",
               }}
             >
-              {cat}
+              {label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 技能网格 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredSkills.map((skill, index) => {
-          const isInstalled = installedSkills.includes(skill.id);
-          const isInstalling = installingSkill === skill.id;
-          const Icon = skill.icon;
-
-          return (
-            <div
+      {/* 技能列表 */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2
+            size={24}
+            className="animate-spin"
+            style={{ color: "oklch(0.52 0.05 215)" }}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {filteredSkills.map((skill) => (
+            <SkillCard
               key={skill.id}
-              className="skill-card p-4 rounded-sm fade-in-up"
-              style={{ animationDelay: `${index * 0.05}s` }}
+              skill={skill}
+              enabled={skillStates[skill.id] ?? false}
+              apiKey={skillKeys[skill.id] ?? ""}
+              onToggle={handleToggle}
+              onKeyChange={handleKeyChange}
+            />
+          ))}
+          {filteredSkills.length === 0 && (
+            <div
+              className="col-span-2 text-center py-12 text-sm"
+              style={{
+                color: "oklch(0.45 0.04 220)",
+                fontFamily: "'JetBrains Mono', monospace",
+              }}
             >
-              {/* 卡片顶部 */}
-              <div className="flex items-start gap-3 mb-3">
-                <div
-                  className="w-10 h-10 rounded-sm flex items-center justify-center flex-shrink-0"
-                  style={{
-                    background: `${skill.color}/0.12`,
-                    border: `1px solid ${skill.color}/0.3`,
-                  }}
-                >
-                  <Icon size={18} style={{ color: skill.color }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="text-sm font-semibold truncate"
-                      style={{ color: "oklch(0.88 0.02 210)", fontFamily: "'IBM Plex Sans', sans-serif" }}
-                    >
-                      {skill.name}
-                    </span>
-                    {isInstalled && (
-                      <CheckCircle size={12} style={{ color: "oklch(0.82 0.22 140)", flexShrink: 0 }} />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span
-                      className="text-xs"
-                      style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
-                    >
-                      v{skill.version}
-                    </span>
-                    <span
-                      className="tag-chip"
-                      style={{
-                        borderColor: skill.author === "官方" ? "oklch(0.78 0.18 200 / 0.3)" : "oklch(0.52 0.05 215 / 0.3)",
-                        color: skill.author === "官方" ? "oklch(0.78 0.18 200)" : "oklch(0.52 0.05 215)",
-                        fontSize: "10px",
-                      }}
-                    >
-                      {skill.author}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 描述 */}
-              <p
-                className="text-xs mb-3 leading-relaxed"
-                style={{ color: "oklch(0.55 0.04 215)" }}
-              >
-                {skill.desc}
-              </p>
-
-              {/* 底部信息 */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1 text-xs" style={{ color: "oklch(0.78 0.18 65)" }}>
-                    <Star size={10} fill="oklch(0.78 0.18 65)" />
-                    {skill.rating}
-                  </div>
-                  <div className="flex items-center gap-1 text-xs" style={{ color: "oklch(0.45 0.04 220)" }}>
-                    <Download size={10} />
-                    {skill.installs}
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleInstall(skill.id, skill.name)}
-                  disabled={isInstalling}
-                  className="install-btn"
-                  style={{
-                    background: isInstalled ? "oklch(0.82 0.22 140 / 0.1)" : "transparent",
-                    borderColor: isInstalled ? "oklch(0.82 0.22 140 / 0.5)" : "oklch(0.78 0.18 200 / 0.5)",
-                    color: isInstalled ? "oklch(0.82 0.22 140)" : "oklch(0.78 0.18 200)",
-                    opacity: isInstalling ? 0.7 : 1,
-                  }}
-                >
-                  {isInstalling ? "安装中..." : isInstalled ? "已安装" : "安装"}
-                </button>
-              </div>
+              未找到匹配的技能
             </div>
-          );
-        })}
-      </div>
-
-      {filteredSkills.length === 0 && (
-        <div
-          className="text-center py-16"
-          style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
-        >
-          <Zap size={32} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">未找到匹配的技能</p>
+          )}
         </div>
       )}
+
+      {/* 底部提示 */}
+      <div
+        className="flex items-center gap-2 text-xs p-3 rounded-sm"
+        style={{
+          background: "oklch(0.78 0.18 200 / 0.05)",
+          border: "1px solid oklch(0.78 0.18 200 / 0.15)",
+          color: "oklch(0.52 0.05 215)",
+          fontFamily: "'JetBrains Mono', monospace",
+        }}
+      >
+        <ExternalLink size={12} style={{ color: "oklch(0.78 0.18 200)" }} />
+        技能配置保存后将写入 openclawd 的 skills 配置段。API Key 仅存储在本地数据库，不会上传到任何第三方服务。
+      </div>
     </div>
   );
 }

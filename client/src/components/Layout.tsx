@@ -1,7 +1,7 @@
 /*
- * iClawd Layout - 工业终端侧边栏布局
+ * iClawd Layout - OpenClaw 驾驶舱布局
  * 
- * 设计：左侧固定导航栏 + 顶部状态栏 + 主内容区
+ * 设计：左侧固定导航栏 + 顶部 Gateway 状态栏 + 主内容区
  * 风格：深蓝黑背景，亮青色激活状态，切角卡片
  */
 
@@ -18,12 +18,18 @@ import {
   MessageSquare,
   Shield,
   Clock,
+  Cpu,
+  Wifi,
+  WifiOff,
+  Loader2,
 } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
 const navItems = [
   { icon: LayoutDashboard, label: "驾驶舱", path: "/dashboard", shortLabel: "仪表" },
   { icon: Brain, label: "灵魂与记忆", path: "/soul", shortLabel: "灵魂" },
   { icon: Zap, label: "技能商店", path: "/skills", shortLabel: "技能" },
+  { icon: Cpu, label: "模型配置", path: "/models", shortLabel: "模型" },
   { icon: Settings, label: "系统设置", path: "/settings", shortLabel: "设置" },
 ];
 
@@ -36,27 +42,26 @@ export default function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // 真实 Gateway 状态
+  const { data: gatewayStatus, isLoading: gwLoading } = trpc.dashboard.gatewayStatus.useQuery(undefined, {
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString("zh-CN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-  };
+  const formatTime = (date: Date) =>
+    date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString("zh-CN", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-  };
+  const formatDate = (date: Date) =>
+    date.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
+
+  const isOnline = gatewayStatus?.online ?? false;
+  const botName = (gatewayStatus as { botName?: string } | undefined)?.botName ?? "ClawDBot";
+  const botEmoji = (gatewayStatus as { botEmoji?: string } | undefined)?.botEmoji ?? "🦞";
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "oklch(0.085 0.015 240)" }}>
@@ -74,12 +79,8 @@ export default function Layout({ children }: LayoutProps) {
           className="flex items-center gap-3 px-4 py-4 flex-shrink-0"
           style={{ borderBottom: "1px solid oklch(0.22 0.03 230)", height: "64px" }}
         >
-          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-            <img
-              src="https://private-us-east-1.manuscdn.com/sessionFile/IKlXMo9WTJl7E2oJy3drln/sandbox/Na3chyG3qQlQjxRaJCPz1U_1771759105259_na1fn_aWNsYXdkLWxvZ28taWNvbg.png?x-oss-process=image/resize,w_1920,h_1920/format,webp/quality,q_80&Expires=1798761600&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvSUtsWE1vOVdUSmw3RTJvSnkzZHJsbi9zYW5kYm94L05hM2NoeUczcVFsUWp4UmFKQ1B6MVVfMTc3MTc1OTEwNTI1OV9uYTFmbl9hV05zWVhka0xXeHZaMjh0YVdOdmJnLnBuZz94LW9zcy1wcm9jZXNzPWltYWdlL3Jlc2l6ZSx3XzE5MjAsaF8xOTIwL2Zvcm1hdCx3ZWJwL3F1YWxpdHkscV84MCIsIkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc5ODc2MTYwMH19fV19&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=hJaF33rLZbLs5mkeVUbStxC-FTcZxu8g3cTPrJUVW-0MxYHeFi3VouQ~Flf8PzVb3KxJTvnIP~eLMTAsBppdZ7~EhCmW3EZlEq7KZm9k9MEt2TSEtnqXTWAW307YdKOcp9mvEqmz9lCVVHiE-WjpKkdh4XvvsUdBjJEYxHeNhnp8QfhOVh7-mdT8yPj1xAvkDZBIzZ0~FonPdBtVPhQliAhszHoda2sKqsY8eEUy7iQrTYdnO~DjGRuHqT-5Vq6q84smVWxBlogxf3Ml8yma~4sdZiL6emUnZ~MlnEvXdVRXt-i8mJg6d7OAotuNymFgSJDk0ErdQrS1RsgQy8AhAg__"
-              alt="iClawd"
-              className="w-8 h-8 object-contain"
-            />
+          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-xl">
+            {botEmoji}
           </div>
           {!collapsed && (
             <div className="overflow-hidden">
@@ -90,10 +91,10 @@ export default function Layout({ children }: LayoutProps) {
                 iClawd
               </div>
               <div
-                className="text-xs leading-tight"
+                className="text-xs leading-tight truncate"
                 style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
               >
-                v0.1.0-alpha
+                {botName}
               </div>
             </div>
           )}
@@ -104,31 +105,31 @@ export default function Layout({ children }: LayoutProps) {
           {navItems.map((item) => {
             const isActive = location === item.path;
             const Icon = item.icon;
+            const isPlaceholder = item.path === "/settings";
             return (
-              <Link key={item.path} href={item.path === "/settings" ? "#" : item.path}>
+              <Link
+                key={item.path}
+                href={isPlaceholder ? "#" : item.path}
+                onClick={
+                  isPlaceholder
+                    ? (e) => {
+                        e.preventDefault();
+                        import("sonner").then(({ toast }) => toast.info("设置功能即将推出"));
+                      }
+                    : undefined
+                }
+              >
                 <div
-                  className="flex items-center gap-3 mx-2 mb-1 px-3 py-2.5 rounded-sm transition-all duration-150 cursor-pointer group"
+                  className="flex items-center gap-3 mx-2 mb-1 px-3 py-2.5 rounded-sm transition-all duration-150 cursor-pointer"
                   style={{
                     background: isActive ? "oklch(0.78 0.18 200 / 0.12)" : "transparent",
                     borderLeft: isActive ? "2px solid oklch(0.78 0.18 200)" : "2px solid transparent",
                     color: isActive ? "oklch(0.78 0.18 200)" : "oklch(0.52 0.05 215)",
                   }}
-                  onClick={() => {
-                    if (item.path === "/settings") {
-                      import("sonner").then(({ toast }) => toast.info("设置功能即将推出"));
-                    }
-                  }}
                 >
-                  <Icon
-                    size={18}
-                    className="flex-shrink-0 transition-colors duration-150"
-                    style={{ color: isActive ? "oklch(0.78 0.18 200)" : undefined }}
-                  />
+                  <Icon size={18} className="flex-shrink-0" style={{ color: isActive ? "oklch(0.78 0.18 200)" : undefined }} />
                   {!collapsed && (
-                    <span
-                      className="text-sm font-medium truncate"
-                      style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
-                    >
+                    <span className="text-sm font-medium truncate" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
                       {item.label}
                     </span>
                   )}
@@ -140,33 +141,30 @@ export default function Layout({ children }: LayoutProps) {
 
         {/* 底部状态区 */}
         {!collapsed && (
-          <div
-            className="px-4 py-3 flex-shrink-0"
-            style={{ borderTop: "1px solid oklch(0.22 0.03 230)" }}
-          >
+          <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: "1px solid oklch(0.22 0.03 230)" }}>
             <div className="flex items-center gap-2 mb-2">
-              <div
-                className="status-dot heartbeat-online flex-shrink-0"
-                style={{ background: "oklch(0.82 0.22 140)" }}
-              />
+              {gwLoading ? (
+                <Loader2 size={10} className="animate-spin" style={{ color: "oklch(0.52 0.05 215)" }} />
+              ) : isOnline ? (
+                <div className="status-dot heartbeat-online flex-shrink-0" style={{ background: "oklch(0.82 0.22 140)" }} />
+              ) : (
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "oklch(0.65 0.22 30)" }} />
+              )}
               <span
                 className="text-xs"
-                style={{ color: "oklch(0.82 0.22 140)", fontFamily: "'JetBrains Mono', monospace" }}
+                style={{
+                  color: isOnline ? "oklch(0.82 0.22 140)" : "oklch(0.65 0.22 30)",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
               >
-                ClawDBot 在线
+                {gwLoading ? "检测中..." : isOnline ? "Gateway 在线" : "Gateway 离线"}
               </span>
             </div>
-            <div
-              className="text-xs"
-              style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
-            >
+            <div className="text-xs" style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}>
               <Clock size={10} className="inline mr-1" />
               {formatTime(currentTime)}
             </div>
-            <div
-              className="text-xs mt-0.5"
-              style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
-            >
+            <div className="text-xs mt-0.5" style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}>
               {formatDate(currentTime)}
             </div>
           </div>
@@ -197,18 +195,25 @@ export default function Layout({ children }: LayoutProps) {
             borderBottom: "1px solid oklch(0.22 0.03 230)",
           }}
         >
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {/* Gateway 状态 */}
             <div
               className="text-xs px-2 py-1 rounded-sm flex items-center gap-1.5"
               style={{
-                background: "oklch(0.82 0.22 140 / 0.1)",
-                border: "1px solid oklch(0.82 0.22 140 / 0.3)",
-                color: "oklch(0.82 0.22 140)",
+                background: isOnline ? "oklch(0.82 0.22 140 / 0.1)" : "oklch(0.65 0.22 30 / 0.1)",
+                border: `1px solid ${isOnline ? "oklch(0.82 0.22 140 / 0.3)" : "oklch(0.65 0.22 30 / 0.3)"}`,
+                color: isOnline ? "oklch(0.82 0.22 140)" : "oklch(0.65 0.22 30)",
                 fontFamily: "'JetBrains Mono', monospace",
               }}
             >
-              <Activity size={10} />
-              SYS ONLINE
+              {gwLoading ? (
+                <Loader2 size={10} className="animate-spin" />
+              ) : isOnline ? (
+                <Wifi size={10} />
+              ) : (
+                <WifiOff size={10} />
+              )}
+              {gwLoading ? "CHECKING" : isOnline ? "GATEWAY ONLINE" : "GATEWAY OFFLINE"}
             </div>
             <div
               className="text-xs px-2 py-1 rounded-sm flex items-center gap-1.5"
@@ -220,17 +225,15 @@ export default function Layout({ children }: LayoutProps) {
               }}
             >
               <Shield size={10} />
-              LOCAL STORAGE
+              LOCAL FIRST
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div
-              className="text-xs"
-              style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
-            >
-              TOKEN 余额: <span style={{ color: "oklch(0.78 0.18 65)" }}>¥ 42.80</span>
+            <div className="text-xs" style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}>
+              <Activity size={10} className="inline mr-1" />
+              OpenClaw Gateway
             </div>
-            <Link href="/">
+            <Link href="/setup">
               <button
                 className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-sm transition-all duration-150"
                 style={{
@@ -241,7 +244,7 @@ export default function Layout({ children }: LayoutProps) {
                 }}
               >
                 <MessageSquare size={12} />
-                开始对话
+                配置向导
               </button>
             </Link>
           </div>

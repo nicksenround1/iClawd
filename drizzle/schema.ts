@@ -19,49 +19,76 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 /**
- * Bot configurations - stores encrypted Bot Token and API keys
- * Each user can have one active bot config
+ * OpenClaw configuration - mirrors ~/.openclaw/openclaw.json structure
+ * Each user stores their OpenClaw Gateway connection info and config
  */
-export const botConfigs = mysqlTable("bot_configs", {
+export const openclawConfigs = mysqlTable("openclaw_configs", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  botName: varchar("botName", { length: 128 }).default("ClawDBot").notNull(),
-  // Telegram Bot Token (stored as-is; in production should be encrypted)
-  telegramToken: text("telegramToken"),
-  // OpenAI API Key
-  openaiApiKey: text("openaiApiKey"),
-  // Other LLM provider keys
-  anthropicApiKey: text("anthropicApiKey"),
-  // Active model
-  activeModel: varchar("activeModel", { length: 64 }).default("gpt-4o").notNull(),
-  // Personality tags (JSON array stored as varchar)
-  personalityTags: varchar("personalityTags", { length: 512 }).default('["direct","logical"]'),
+  userId: int("userId").notNull().unique(),
+
+  // Gateway connection
+  gatewayUrl: varchar("gatewayUrl", { length: 256 }).notNull(),
+  gatewayToken: text("gatewayToken"),
+
+  // Bot identity
+  botName: varchar("botName", { length: 128 }).notNull(),
+  botEmoji: varchar("botEmoji", { length: 16 }).notNull(),
+  botVibe: varchar("botVibe", { length: 256 }).notNull(),
+  botCreature: varchar("botCreature", { length: 128 }).notNull(),
+
+  // Channels (JSON) - telegram/whatsapp/discord config
+  channelsJson: text("channelsJson"),
+
+  // Models (JSON) - primary model + fallbacks + provider API keys
+  modelsJson: text("modelsJson"),
+
+  // Skills (JSON) - enabled/disabled skills + API keys
+  skillsJson: text("skillsJson"),
+
+  // SOUL.md content
+  soulMd: text("soulMd"),
+
+  // Active model shorthand
+  activeModel: varchar("activeModel", { length: 128 }).notNull(),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
-export type BotConfig = typeof botConfigs.$inferSelect;
-export type InsertBotConfig = typeof botConfigs.$inferInsert;
+export type OpenclawConfig = typeof openclawConfigs.$inferSelect;
+export type InsertOpenclawConfig = typeof openclawConfigs.$inferInsert;
 
 /**
  * Token usage records - stores per-hour token consumption snapshots
- * Used to power the 24h Token usage chart in the dashboard
  */
 export const tokenUsage = mysqlTable("token_usage", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
-  // Hour bucket: Unix timestamp rounded to the hour (ms)
   hourBucket: bigint("hourBucket", { mode: "number" }).notNull(),
-  // Token counts
   promptTokens: int("promptTokens").default(0).notNull(),
   completionTokens: int("completionTokens").default(0).notNull(),
   totalTokens: int("totalTokens").default(0).notNull(),
-  // Estimated cost in USD cents
   costCents: int("costCents").default(0).notNull(),
-  // Model used
-  model: varchar("model", { length: 64 }).default("gpt-4o").notNull(),
+  model: varchar("model", { length: 128 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type TokenUsage = typeof tokenUsage.$inferSelect;
 export type InsertTokenUsage = typeof tokenUsage.$inferInsert;
+
+/**
+ * Memory entries - mirrors ~/.openclaw/workspace/memory/ files
+ */
+export const memoryEntries = mysqlTable("memory_entries", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  title: varchar("title", { length: 256 }).notNull(),
+  content: text("content").notNull(),
+  isPinned: int("isPinned").default(0).notNull(),
+  category: varchar("category", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MemoryEntry = typeof memoryEntries.$inferSelect;
+export type InsertMemoryEntry = typeof memoryEntries.$inferInsert;

@@ -1,127 +1,130 @@
 /*
- * iClawd Dashboard - 驾驶舱主页（真实 API 版）
+ * iClawd Dashboard - OpenClaw 机甲驾驶舱
  *
  * 数据来源：
- *  - 心跳状态：trpc.dashboard.botStatus（Telegram Bot API ping）
- *  - Token 图表：trpc.dashboard.tokenUsage（DB + OpenAI Usage API 同步）
+ *  - Gateway 心跳：trpc.dashboard.gatewayStatus（每 30s 轮询）
+ *  - Token 图表：trpc.dashboard.tokenUsage（每 60s 轮询）
  *  - 今日统计：trpc.dashboard.todayStats
- *  - Bot 配置：trpc.dashboard.getConfig
- *
- * 轮询间隔：心跳 30s，Token 60s
+ *  - 配置概览：trpc.dashboard.getConfig
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Activity,
-  Cpu,
-  Zap,
-  MessageSquare,
   RefreshCw,
-  TrendingUp,
-  Clock,
-  Database,
   AlertTriangle,
   CheckCircle,
-  ExternalLink,
-  BarChart3,
-  Settings,
   Wifi,
   WifiOff,
+  Cpu,
+  Zap,
+  Brain,
+  Terminal,
+  Copy,
+  Download,
   Loader2,
-  Plus,
+  Play,
+  ChevronRight,
 } from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import { toast } from "sonner";
-import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 
-// ─── Animated Counter ─────────────────────────────────────────────────────────
+// ─── Subcomponents ────────────────────────────────────────────────────────────
 
-function AnimatedCounter({ target, duration = 1500 }: { target: number; duration?: number }) {
-  const [count, setCount] = useState(0);
-  const [prevTarget, setPrevTarget] = useState(0);
-
-  if (prevTarget !== target) {
-    setPrevTarget(target);
-    let start = prevTarget;
-    const step = (target - start) / (duration / 16);
-    const timer = setInterval(() => {
-      start += step;
-      if ((step > 0 && start >= target) || (step < 0 && start <= target)) {
-        setCount(target);
-        clearInterval(timer);
-      } else {
-        setCount(Math.floor(start));
-      }
-    }, 16);
-  }
-
-  return <>{count.toLocaleString()}</>;
-}
-
-// ─── Status Badge ─────────────────────────────────────────────────────────────
-
-function StatusBadge({ online, loading }: { online: boolean; loading: boolean }) {
-  if (loading) return (
-    <div className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.52 0.05 215)" }}>
-      <Loader2 size={12} className="animate-spin" />
-      检测中...
+function StatCard({
+  label,
+  value,
+  sub,
+  color,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  color: string;
+  icon: React.ElementType;
+}) {
+  return (
+    <div className="panel-card p-4">
+      <div className="flex items-start justify-between mb-2">
+        <div
+          className="text-xs font-medium uppercase tracking-widest"
+          style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
+        >
+          {label}
+        </div>
+        <Icon size={14} style={{ color }} />
+      </div>
+      <div
+        className="text-2xl font-bold"
+        style={{ fontFamily: "'Space Mono', monospace", color }}
+      >
+        {value}
+      </div>
+      {sub && (
+        <div className="text-xs mt-1" style={{ color: "oklch(0.45 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}>
+          {sub}
+        </div>
+      )}
     </div>
   );
+}
+
+function HeartbeatIndicator({ online, loading }: { online: boolean; loading: boolean }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs" style={{ color: online ? "oklch(0.82 0.22 140)" : "oklch(0.62 0.22 25)" }}>
-      {online ? <Wifi size={12} /> : <WifiOff size={12} />}
-      {online ? "在线" : "离线"}
+    <div className="flex items-center gap-2">
+      {loading ? (
+        <Loader2 size={16} className="animate-spin" style={{ color: "oklch(0.52 0.05 215)" }} />
+      ) : online ? (
+        <div className="relative flex items-center justify-center">
+          <div
+            className="w-3 h-3 rounded-full"
+            style={{ background: "oklch(0.82 0.22 140)", boxShadow: "0 0 8px oklch(0.82 0.22 140 / 0.8)" }}
+          />
+          <div
+            className="absolute w-3 h-3 rounded-full animate-ping"
+            style={{ background: "oklch(0.82 0.22 140 / 0.4)" }}
+          />
+        </div>
+      ) : (
+        <div className="w-3 h-3 rounded-full" style={{ background: "oklch(0.65 0.22 30)" }} />
+      )}
+      <span
+        className="text-sm font-medium"
+        style={{
+          color: loading ? "oklch(0.52 0.05 215)" : online ? "oklch(0.82 0.22 140)" : "oklch(0.65 0.22 30)",
+          fontFamily: "'JetBrains Mono', monospace",
+        }}
+      >
+        {loading ? "CHECKING..." : online ? "ONLINE" : "OFFLINE"}
+      </span>
     </div>
   );
 }
 
-// ─── Demo Token Adder ─────────────────────────────────────────────────────────
-
-function DemoTokenAdder({ onAdded }: { onAdded: () => void }) {
-  const addUsage = trpc.dashboard.addTokenUsage.useMutation({
-    onSuccess: (data) => {
-      toast.success(`已记录 ${data.totalTokens.toLocaleString()} tokens`);
-      onAdded();
-    },
-    onError: (err) => toast.error(`记录失败: ${err.message}`),
-  });
-
-  const handleAdd = () => {
-    const prompt = Math.floor(Math.random() * 800) + 200;
-    const completion = Math.floor(Math.random() * 400) + 100;
-    addUsage.mutate({ promptTokens: prompt, completionTokens: completion });
-  };
-
-  return (
-    <button
-      onClick={handleAdd}
-      disabled={addUsage.isPending}
-      className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-sm transition-all"
-      style={{
-        background: "oklch(0.72 0.18 280 / 0.1)",
-        border: "1px solid oklch(0.72 0.18 280 / 0.3)",
-        color: "oklch(0.72 0.18 280)",
-        fontFamily: "'JetBrains Mono', monospace",
-      }}
-      title="模拟一次 API 调用（演示用）"
-    >
-      {addUsage.isPending ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
-      模拟调用
-    </button>
-  );
-}
-
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const [restarting, setRestarting] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+
   // ── Data fetching ──
   const {
-    data: botStatus,
-    isLoading: botLoading,
-    refetch: refetchBot,
-  } = trpc.dashboard.botStatus.useQuery(undefined, {
-    refetchInterval: 30_000, // poll every 30s
+    data: gatewayStatus,
+    isLoading: gwLoading,
+    refetch: refetchGw,
+  } = trpc.dashboard.gatewayStatus.useQuery(undefined, {
+    refetchInterval: 30_000,
     retry: 1,
   });
 
@@ -130,13 +133,12 @@ export default function Dashboard() {
     isLoading: usageLoading,
     refetch: refetchUsage,
   } = trpc.dashboard.tokenUsage.useQuery(undefined, {
-    refetchInterval: 60_000, // poll every 60s
+    refetchInterval: 60_000,
     retry: 1,
   });
 
   const {
     data: todayStats,
-    isLoading: statsLoading,
     refetch: refetchStats,
   } = trpc.dashboard.todayStats.useQuery(undefined, {
     refetchInterval: 60_000,
@@ -145,541 +147,455 @@ export default function Dashboard() {
 
   const { data: botConfig } = trpc.dashboard.getConfig.useQuery(undefined, { retry: 1 });
 
+  const addUsageMutation = trpc.dashboard.addTokenUsage.useMutation({
+    onSuccess: (data) => {
+      toast.success(`已记录 ${data.totalTokens} tokens（演示）`);
+      refetchUsage();
+      refetchStats();
+    },
+  });
+
   // ── Derived state ──
-  const isOnline = botStatus?.online ?? false;
-  const isConfigured = botStatus?.configured ?? false;
+  const isOnline = gatewayStatus?.online ?? false;
+  const isConfigured = (gatewayStatus as { configured?: boolean } | undefined)?.configured ?? false;
   const tokenChart = usageData?.chart ?? [];
   const todayTokens = todayStats?.totalTokens ?? 0;
   const todayCostCents = todayStats?.costCents ?? 0;
-  const lastSyncTime = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  const activeModel = botConfig?.activeModel ?? "—";
+  const gatewayUrl = botConfig?.gatewayUrl ?? "未配置";
 
-  // ── Restart handler (demo) ──
-  const [restarting, setRestarting] = useState(false);
+  // ── Handlers ──
+  const handleRefreshAll = () => {
+    refetchGw();
+    refetchUsage();
+    refetchStats();
+    setLastRefresh(new Date());
+    toast.info("正在刷新所有数据...");
+  };
+
   const handleRestart = () => {
     if (!isConfigured) {
-      toast.error("请先在设置中配置 Bot Token");
+      toast.error("请先在配置向导中完成 Gateway 配置");
       return;
     }
     setRestarting(true);
-    toast.info("正在重启 ClawDBot...", { duration: 2000 });
+    toast.info("正在向 Gateway 发送重启信号...", { duration: 2000 });
     setTimeout(() => {
       setRestarting(false);
-      refetchBot();
+      refetchGw();
       toast.success("重启信号已发送，正在重新检测状态...");
     }, 3000);
   };
 
-  const handleRefreshAll = () => {
-    refetchBot();
-    refetchUsage();
-    refetchStats();
-    toast.info("正在刷新所有数据...");
+  const handleDemoUsage = () => {
+    addUsageMutation.mutate({
+      promptTokens: Math.floor(Math.random() * 800) + 200,
+      completionTokens: Math.floor(Math.random() * 400) + 100,
+      model: activeModel,
+    });
   };
 
+  const handleExportConfig = async () => {
+    if (!botConfig) {
+      toast.error("请先完成配置");
+      return;
+    }
+    toast.info("正在生成 openclaw.json...");
+  };
+
+  const maxTokens = Math.max(...tokenChart.map((d) => d.tokens), 1);
+
   return (
-    <div className="p-6 space-y-6 fade-in-up">
-      {/* 页面标题 */}
+    <div className="p-6 space-y-6">
+      {/* ── 页面标题 ── */}
       <div className="flex items-center justify-between">
         <div>
+          <div
+            className="text-xs mb-1"
+            style={{ color: "oklch(0.78 0.18 200)", fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            COCKPIT / DASHBOARD
+          </div>
           <h1
             className="text-2xl font-bold"
             style={{ fontFamily: "'Space Mono', monospace", color: "oklch(0.92 0.02 210)" }}
           >
-            COCKPIT
+            机甲驾驶舱
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: "oklch(0.52 0.05 215)" }}>
-            实时系统状态监控 · ClawDBot 驾驶舱
-          </p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* 同步状态指示 */}
-          {usageData?.synced && (
-            <div
-              className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-sm"
-              style={{
-                background: "oklch(0.82 0.22 140 / 0.08)",
-                border: "1px solid oklch(0.82 0.22 140 / 0.2)",
-                color: "oklch(0.82 0.22 140)",
-                fontFamily: "'JetBrains Mono', monospace",
-              }}
-            >
-              <CheckCircle size={10} />
-              OpenAI 已同步
-            </div>
-          )}
+        <div className="flex items-center gap-3">
+          <div className="text-xs" style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}>
+            最后刷新: {lastRefresh.toLocaleTimeString("zh-CN", { hour12: false })}
+          </div>
           <button
             onClick={handleRefreshAll}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm transition-all"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-sm transition-all duration-150 hover:scale-105"
             style={{
-              background: "oklch(0.78 0.18 200 / 0.08)",
-              border: "1px solid oklch(0.78 0.18 200 / 0.25)",
+              background: "oklch(0.78 0.18 200 / 0.1)",
+              border: "1px solid oklch(0.78 0.18 200 / 0.4)",
               color: "oklch(0.78 0.18 200)",
               fontFamily: "'JetBrains Mono', monospace",
             }}
           >
-            <RefreshCw size={11} />
-            SYNC · {lastSyncTime}
+            <RefreshCw size={12} />
+            刷新
           </button>
         </div>
       </div>
 
-      {/* 未配置提示横幅 */}
-      {!isConfigured && !botLoading && (
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-sm"
-          style={{
-            background: "oklch(0.78 0.18 65 / 0.08)",
-            border: "1px solid oklch(0.78 0.18 65 / 0.3)",
-          }}
-        >
-          <AlertTriangle size={16} style={{ color: "oklch(0.78 0.18 65)", flexShrink: 0 }} />
-          <div className="flex-1 min-w-0">
-            <span className="text-sm" style={{ color: "oklch(0.78 0.18 65)" }}>
-              尚未配置 Bot Token。部分数据显示为演示模式。
-            </span>
-          </div>
-          <Link href="/setup">
-            <button
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm flex-shrink-0"
+      {/* ── Gateway 心跳卡片 ── */}
+      <div
+        className="panel-card p-5"
+        style={{
+          borderColor: isOnline ? "oklch(0.82 0.22 140 / 0.4)" : "oklch(0.65 0.22 30 / 0.4)",
+          background: isOnline
+            ? "linear-gradient(135deg, oklch(0.82 0.22 140 / 0.05), transparent)"
+            : "linear-gradient(135deg, oklch(0.65 0.22 30 / 0.05), transparent)",
+        }}
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <div
+              className="w-12 h-12 rounded-sm flex items-center justify-center flex-shrink-0"
               style={{
-                background: "oklch(0.78 0.18 65 / 0.15)",
-                border: "1px solid oklch(0.78 0.18 65 / 0.5)",
-                color: "oklch(0.78 0.18 65)",
-                fontFamily: "'JetBrains Mono', monospace",
+                background: isOnline ? "oklch(0.82 0.22 140 / 0.1)" : "oklch(0.65 0.22 30 / 0.1)",
+                border: `1px solid ${isOnline ? "oklch(0.82 0.22 140 / 0.3)" : "oklch(0.65 0.22 30 / 0.3)"}`,
               }}
             >
-              <Settings size={11} />
-              前往配置
-            </button>
-          </Link>
-        </div>
-      )}
-
-      {/* 顶部状态卡片行 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 心跳监控卡片 */}
-        <div
-          className="panel-card p-4 scanline-bg"
-          style={{
-            borderColor: botLoading
-              ? "oklch(0.52 0.05 215 / 0.3)"
-              : isOnline
-              ? "oklch(0.82 0.22 140 / 0.4)"
-              : "oklch(0.62 0.22 25 / 0.4)",
-          }}
-        >
-          <div className="flex items-start justify-between mb-3">
+              {isOnline ? (
+                <Wifi size={22} style={{ color: "oklch(0.82 0.22 140)" }} />
+              ) : (
+                <WifiOff size={22} style={{ color: "oklch(0.65 0.22 30)" }} />
+              )}
+            </div>
             <div>
               <div
-                className="text-xs font-medium uppercase tracking-widest mb-1"
+                className="text-xs mb-1"
                 style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
               >
-                BOT STATUS
+                OPENCLAW GATEWAY
               </div>
+              <HeartbeatIndicator online={isOnline} loading={gwLoading} />
               <div
-                className="text-lg font-bold"
-                style={{
-                  fontFamily: "'Space Mono', monospace",
-                  color: botLoading
-                    ? "oklch(0.52 0.05 215)"
-                    : isOnline
-                    ? "oklch(0.82 0.22 140)"
-                    : "oklch(0.62 0.22 25)",
-                }}
+                className="text-xs mt-1"
+                style={{ color: "oklch(0.45 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
               >
-                {botLoading ? "CHECKING" : isOnline ? "ONLINE" : "OFFLINE"}
+                {gatewayUrl}
               </div>
-              {botStatus?.online && (botStatus as { username?: string }).username && (
+              {!isOnline && !gwLoading && (
                 <div
-                  className="text-xs mt-0.5"
-                  style={{ color: "oklch(0.45 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
+                  className="text-xs mt-1"
+                  style={{ color: "oklch(0.65 0.22 30)", fontFamily: "'JetBrains Mono', monospace" }}
                 >
-                  @{(botStatus as { username?: string }).username}
+                  {(gatewayStatus as { error?: string } | undefined)?.error ?? "无法连接到 Gateway"}
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              {botLoading ? (
-                <Loader2 size={14} className="animate-spin" style={{ color: "oklch(0.52 0.05 215)" }} />
-              ) : (
-                <div
-                  className={`status-dot ${isOnline ? "heartbeat-online" : "heartbeat-offline"}`}
+          </div>
+          <div className="flex items-center gap-2">
+            {!isConfigured && (
+              <Link href="/setup">
+                <button
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-sm transition-all duration-150"
                   style={{
-                    background: isOnline ? "oklch(0.82 0.22 140)" : "oklch(0.62 0.22 25)",
-                    width: "12px",
-                    height: "12px",
+                    background: "oklch(0.78 0.18 65 / 0.15)",
+                    border: "1px solid oklch(0.78 0.18 65 / 0.5)",
+                    color: "oklch(0.78 0.18 65)",
+                    fontFamily: "'JetBrains Mono', monospace",
                   }}
-                />
-              )}
+                >
+                  <Terminal size={12} />
+                  立即配置
+                  <ChevronRight size={10} />
+                </button>
+              </Link>
+            )}
+            <button
+              onClick={handleRestart}
+              disabled={restarting || !isConfigured}
+              className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-sm transition-all duration-150 disabled:opacity-40"
+              style={{
+                background: "oklch(0.78 0.18 200 / 0.1)",
+                border: "1px solid oklch(0.78 0.18 200 / 0.4)",
+                color: "oklch(0.78 0.18 200)",
+                fontFamily: "'JetBrains Mono', monospace",
+              }}
+            >
+              {restarting ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+              {restarting ? "重启中..." : "重启"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 统计卡片行 ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          label="今日 Tokens"
+          value={todayTokens.toLocaleString()}
+          sub="prompt + completion"
+          color="oklch(0.78 0.18 200)"
+          icon={Activity}
+        />
+        <StatCard
+          label="今日费用"
+          value={`$${(todayCostCents / 100).toFixed(4)}`}
+          sub="估算值"
+          color="oklch(0.78 0.18 65)"
+          icon={Zap}
+        />
+        <StatCard
+          label="活跃模型"
+          value={activeModel.split("/").pop() ?? activeModel}
+          sub={activeModel.includes("/") ? activeModel.split("/")[0] : undefined}
+          color="oklch(0.72 0.18 280)"
+          icon={Cpu}
+        />
+        <StatCard
+          label="配置状态"
+          value={isConfigured ? "READY" : "PENDING"}
+          sub={isConfigured ? "Gateway 已配置" : "需要完成配置"}
+          color={isConfigured ? "oklch(0.82 0.22 140)" : "oklch(0.65 0.22 30)"}
+          icon={isConfigured ? CheckCircle : AlertTriangle}
+        />
+      </div>
+
+      {/* ── Token 消耗图表 ── */}
+      <div className="panel-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div
+              className="text-xs mb-1"
+              style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              TOKEN USAGE / 24H
+            </div>
+            <div
+              className="text-base font-bold"
+              style={{ fontFamily: "'Space Mono', monospace", color: "oklch(0.92 0.02 210)" }}
+            >
+              Token 消耗趋势
             </div>
           </div>
-          <div className="flex items-center gap-2 mt-3">
-            {isOnline ? (
-              <div className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.52 0.05 215)" }}>
-                <CheckCircle size={12} style={{ color: "oklch(0.82 0.22 140)" }} />
-                Bot 响应正常
-              </div>
-            ) : (
-              <button
-                onClick={handleRestart}
-                disabled={restarting || botLoading}
-                className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-sm transition-all"
-                style={{
-                  background: "oklch(0.78 0.18 200 / 0.15)",
-                  border: "1px solid oklch(0.78 0.18 200 / 0.5)",
+          <div className="flex items-center gap-2">
+            {usageLoading && <Loader2 size={14} className="animate-spin" style={{ color: "oklch(0.52 0.05 215)" }} />}
+            <button
+              onClick={handleDemoUsage}
+              disabled={addUsageMutation.isPending}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm transition-all duration-150 disabled:opacity-50"
+              style={{
+                background: "oklch(0.72 0.18 280 / 0.1)",
+                border: "1px solid oklch(0.72 0.18 280 / 0.4)",
+                color: "oklch(0.72 0.18 280)",
+                fontFamily: "'JetBrains Mono', monospace",
+              }}
+            >
+              <Play size={10} />
+              模拟调用
+            </button>
+          </div>
+        </div>
+
+        {tokenChart.length > 0 && maxTokens > 0 ? (
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={tokenChart} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="tokenGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="oklch(0.78 0.18 200)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="oklch(0.78 0.18 200)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.22 0.03 230)" />
+              <XAxis
+                dataKey="time"
+                tick={{ fill: "oklch(0.45 0.04 220)", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}
+                tickLine={false}
+                axisLine={{ stroke: "oklch(0.22 0.03 230)" }}
+                interval={3}
+              />
+              <YAxis
+                tick={{ fill: "oklch(0.45 0.04 220)", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "oklch(0.12 0.02 235)",
+                  border: "1px solid oklch(0.22 0.03 230)",
+                  borderRadius: "4px",
                   color: "oklch(0.78 0.18 200)",
                   fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: "11px",
                 }}
-              >
-                <RefreshCw size={10} className={restarting ? "animate-spin" : ""} />
-                {restarting ? "重启中..." : "一键重启"}
-              </button>
-            )}
-            {!botLoading && (
-              <button
-                onClick={() => refetchBot()}
-                className="text-xs"
-                style={{ color: "oklch(0.38 0.04 220)" }}
-                title="重新检测"
-              >
-                <RefreshCw size={10} />
-              </button>
-            )}
+                formatter={(value: number) => [`${value.toLocaleString()} tokens`, "消耗"]}
+              />
+              <Area
+                type="monotone"
+                dataKey="tokens"
+                stroke="oklch(0.78 0.18 200)"
+                strokeWidth={2}
+                fill="url(#tokenGradient)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div
+            className="h-48 flex flex-col items-center justify-center gap-3"
+            style={{ color: "oklch(0.45 0.04 220)" }}
+          >
+            <Activity size={32} style={{ opacity: 0.3 }} />
+            <div className="text-sm" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+              暂无 Token 消耗记录
+            </div>
+            <div className="text-xs" style={{ color: "oklch(0.38 0.04 220)" }}>
+              点击"模拟调用"添加演示数据，或等待真实对话产生记录
+            </div>
           </div>
-          {/* 错误信息 */}
-          {!isOnline && !botLoading && (botStatus as { error?: string })?.error && (
-            <div
-              className="mt-2 text-xs truncate"
-              style={{ color: "oklch(0.62 0.22 25 / 0.8)", fontFamily: "'JetBrains Mono', monospace" }}
-              title={(botStatus as { error?: string }).error}
-            >
-              {(botStatus as { error?: string }).error}
+        )}
+      </div>
+
+      {/* ── 配置概览 + 快捷操作 ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 配置概览 */}
+        <div className="panel-card p-5">
+          <div
+            className="text-xs font-medium uppercase tracking-widest mb-3"
+            style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            CONFIG OVERVIEW
+          </div>
+          {botConfig ? (
+            <div className="space-y-2">
+              {[
+                { label: "Bot 名称", value: `${botConfig.botEmoji} ${botConfig.botName}` },
+                { label: "主模型", value: botConfig.activeModel },
+                { label: "Gateway", value: botConfig.gatewayUrl },
+                {
+                  label: "Gateway Token",
+                  value: botConfig.gatewayTokenConfigured ? `已配置 (${botConfig.gatewayTokenMasked})` : "未配置",
+                  ok: botConfig.gatewayTokenConfigured,
+                },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between py-1.5" style={{ borderBottom: "1px solid oklch(0.15 0.02 235)" }}>
+                  <span className="text-xs" style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {item.label}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {"ok" in item && (
+                      item.ok
+                        ? <CheckCircle size={10} style={{ color: "oklch(0.82 0.22 140)" }} />
+                        : <AlertTriangle size={10} style={{ color: "oklch(0.78 0.18 65)" }} />
+                    )}
+                    <span
+                      className="text-xs max-w-[180px] truncate text-right"
+                      style={{ color: "oklch(0.75 0.04 210)", fontFamily: "'JetBrains Mono', monospace" }}
+                    >
+                      {item.value}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-6 gap-2">
+              <AlertTriangle size={24} style={{ color: "oklch(0.78 0.18 65)", opacity: 0.6 }} />
+              <div className="text-xs text-center" style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}>
+                尚未完成配置
+              </div>
+              <Link href="/setup">
+                <button
+                  className="text-xs px-3 py-1.5 rounded-sm mt-1"
+                  style={{
+                    background: "oklch(0.78 0.18 200 / 0.1)",
+                    border: "1px solid oklch(0.78 0.18 200 / 0.4)",
+                    color: "oklch(0.78 0.18 200)",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  前往配置向导
+                </button>
+              </Link>
             </div>
           )}
         </div>
 
-        {/* Token 消耗 */}
-        <div className="panel-card p-4">
+        {/* 快捷操作 */}
+        <div className="panel-card p-5">
           <div
-            className="text-xs font-medium uppercase tracking-widest mb-1"
+            className="text-xs font-medium uppercase tracking-widest mb-3"
             style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
           >
-            TODAY TOKENS
+            QUICK ACTIONS
           </div>
-          <div
-            className="text-2xl font-bold counter-value"
-            style={{ color: "oklch(0.78 0.18 200)" }}
-          >
-            {statsLoading ? (
-              <Loader2 size={20} className="animate-spin" />
-            ) : (
-              <AnimatedCounter target={todayTokens} />
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 mt-2 text-xs" style={{ color: "oklch(0.52 0.05 215)" }}>
-            <TrendingUp size={11} style={{ color: "oklch(0.78 0.18 65)" }} />
-            {todayTokens > 0 ? `≈ $${(todayCostCents / 100).toFixed(4)}` : "暂无数据"}
-          </div>
-        </div>
-
-        {/* API 配置状态 */}
-        <div className="panel-card p-4">
-          <div
-            className="text-xs font-medium uppercase tracking-widest mb-1"
-            style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
-          >
-            API CONFIG
-          </div>
-          <div
-            className="text-lg font-bold"
-            style={{
-              fontFamily: "'Space Mono', monospace",
-              color: botConfig?.openaiApiKeyConfigured ? "oklch(0.82 0.22 140)" : "oklch(0.52 0.05 215)",
-            }}
-          >
-            {botConfig?.openaiApiKeyConfigured ? "ACTIVE" : "PENDING"}
-          </div>
-          <div className="mt-2 space-y-1">
-            <div className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.52 0.05 215)" }}>
-              {botConfig?.telegramTokenConfigured ? (
-                <CheckCircle size={10} style={{ color: "oklch(0.82 0.22 140)" }} />
-              ) : (
-                <AlertTriangle size={10} style={{ color: "oklch(0.78 0.18 65)" }} />
-              )}
-              Telegram Bot
-            </div>
-            <div className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.52 0.05 215)" }}>
-              {botConfig?.openaiApiKeyConfigured ? (
-                <CheckCircle size={10} style={{ color: "oklch(0.82 0.22 140)" }} />
-              ) : (
-                <AlertTriangle size={10} style={{ color: "oklch(0.78 0.18 65)" }} />
-              )}
-              OpenAI API Key
-            </div>
-          </div>
-        </div>
-
-        {/* 活跃模型 */}
-        <div className="panel-card p-4">
-          <div
-            className="text-xs font-medium uppercase tracking-widest mb-1"
-            style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
-          >
-            ACTIVE MODEL
-          </div>
-          <div
-            className="text-base font-bold counter-value truncate"
-            style={{ color: "oklch(0.72 0.18 280)", fontFamily: "'Space Mono', monospace" }}
-          >
-            {botConfig?.activeModel ?? "gpt-4o"}
-          </div>
-          <div className="flex items-center gap-1.5 mt-2 text-xs" style={{ color: "oklch(0.52 0.05 215)" }}>
-            <MessageSquare size={11} />
-            {botConfig?.botName ?? "ClawDBot"}
-          </div>
-        </div>
-      </div>
-
-      {/* 中间区域：图表 + 资源 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Token 消耗图表 */}
-        <div className="lg:col-span-2 panel-card p-4">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div
-                className="text-xs font-medium uppercase tracking-widest"
-                style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                TOKEN USAGE / 24H
-                {usageLoading && (
-                  <span className="ml-2 inline-flex items-center gap-1" style={{ color: "oklch(0.52 0.05 215)" }}>
-                    <Loader2 size={10} className="animate-spin" />
-                    加载中
-                  </span>
-                )}
-              </div>
-              {tokenChart.length > 0 && (
-                <div className="text-xs mt-0.5" style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}>
-                  总计: {tokenChart.reduce((s, d) => s + d.tokens, 0).toLocaleString()} tokens
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <DemoTokenAdder onAdded={() => { refetchUsage(); refetchStats(); }} />
-              <BarChart3 size={14} style={{ color: "oklch(0.52 0.05 215)" }} />
-            </div>
-          </div>
-          <div style={{ height: "160px" }}>
-            {tokenChart.length === 0 && !usageLoading ? (
-              <div
-                className="h-full flex flex-col items-center justify-center gap-2"
-                style={{ color: "oklch(0.38 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                <BarChart3 size={28} className="opacity-30" />
-                <p className="text-xs">暂无 Token 使用记录</p>
-                <p className="text-xs opacity-60">配置 OpenAI API Key 后自动同步，或点击"模拟调用"添加演示数据</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={tokenChart} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="tokenGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="oklch(0.78 0.18 200)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="oklch(0.78 0.18 200)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="time"
-                    tick={{ fill: "oklch(0.38 0.04 220)", fontSize: 10, fontFamily: "JetBrains Mono" }}
-                    axisLine={false}
-                    tickLine={false}
-                    interval={3}
-                  />
-                  <YAxis
-                    tick={{ fill: "oklch(0.38 0.04 220)", fontSize: 10, fontFamily: "JetBrains Mono" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: "oklch(0.11 0.018 235)",
-                      border: "1px solid oklch(0.22 0.03 230)",
-                      borderRadius: "2px",
-                      fontSize: "11px",
-                      fontFamily: "JetBrains Mono",
-                      color: "oklch(0.92 0.02 210)",
-                    }}
-                    formatter={(value: number) => [`${value.toLocaleString()} tokens`, "消耗"]}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="tokens"
-                    stroke="oklch(0.78 0.18 200)"
-                    strokeWidth={2}
-                    fill="url(#tokenGradient)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* 系统资源 + 快速操作 */}
-        <div className="panel-card p-4">
-          <div
-            className="text-xs font-medium uppercase tracking-widest mb-4"
-            style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
-          >
-            SYSTEM RESOURCES
-          </div>
-          <div className="space-y-4">
+          <div className="space-y-2">
             {[
-              { label: "CPU", value: 23, icon: Cpu, color: "oklch(0.78 0.18 200)" },
-              { label: "内存", value: 67, icon: Database, color: "oklch(0.78 0.18 65)" },
-              { label: "API 限速", value: 12, icon: Zap, color: "oklch(0.82 0.22 140)" },
-            ].map((item) => (
-              <div key={item.label}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.52 0.05 215)" }}>
-                    <item.icon size={11} style={{ color: item.color }} />
-                    {item.label}
-                  </div>
-                  <span
-                    className="text-xs counter-value"
-                    style={{ color: item.color, fontFamily: "'JetBrains Mono', monospace" }}
-                  >
-                    {item.value}%
-                  </span>
-                </div>
+              {
+                icon: Brain,
+                label: "编辑 SOUL.md",
+                sub: "修改 Bot 人格与行为",
+                path: "/soul",
+                color: "oklch(0.72 0.18 280)",
+              },
+              {
+                icon: Zap,
+                label: "管理技能",
+                sub: "安装/卸载 OpenClaw Skills",
+                path: "/skills",
+                color: "oklch(0.82 0.22 140)",
+              },
+              {
+                icon: Cpu,
+                label: "切换模型",
+                sub: "配置 LLM 提供商与 API Key",
+                path: "/models",
+                color: "oklch(0.78 0.18 200)",
+              },
+              {
+                icon: Download,
+                label: "导出配置",
+                sub: "生成 openclaw.json 文件",
+                path: null,
+                color: "oklch(0.78 0.18 65)",
+                onClick: handleExportConfig,
+              },
+            ].map((action) => {
+              const Icon = action.icon;
+              const inner = (
                 <div
-                  className="h-1.5 rounded-full overflow-hidden"
-                  style={{ background: "oklch(0.22 0.03 230)" }}
+                  key={action.label}
+                  className="flex items-center gap-3 p-3 rounded-sm cursor-pointer transition-all duration-150 hover:scale-[1.01]"
+                  style={{
+                    background: "oklch(0.12 0.018 237)",
+                    border: "1px solid oklch(0.18 0.025 235)",
+                  }}
+                  onClick={action.onClick}
                 >
                   <div
-                    className="h-full rounded-full transition-all duration-1000"
-                    style={{
-                      width: `${item.value}%`,
-                      background: item.color,
-                      boxShadow: `0 0 6px ${item.color}`,
-                    }}
-                  />
+                    className="w-8 h-8 rounded-sm flex items-center justify-center flex-shrink-0"
+                    style={{ background: `${action.color}/0.1`, border: `1px solid ${action.color}/0.3` }}
+                  >
+                    <Icon size={16} style={{ color: action.color }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium" style={{ color: "oklch(0.85 0.02 210)", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+                      {action.label}
+                    </div>
+                    <div className="text-xs" style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}>
+                      {action.sub}
+                    </div>
+                  </div>
+                  <ChevronRight size={14} style={{ color: "oklch(0.38 0.04 220)" }} />
                 </div>
-              </div>
-            ))}
+              );
+              return action.path ? (
+                <Link key={action.label} href={action.path}>
+                  {inner}
+                </Link>
+              ) : (
+                <div key={action.label}>{inner}</div>
+              );
+            })}
           </div>
-
-          {/* 快速操作 */}
-          <div className="mt-6 pt-4" style={{ borderTop: "1px solid oklch(0.22 0.03 230)" }}>
-            <div
-              className="text-xs font-medium uppercase tracking-widest mb-3"
-              style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
-            >
-              QUICK ACTIONS
-            </div>
-            <div className="space-y-2">
-              <button
-                onClick={() => toast.info("正在跳转到对话界面...")}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-sm transition-all duration-150"
-                style={{
-                  background: "oklch(0.78 0.18 200 / 0.1)",
-                  border: "1px solid oklch(0.78 0.18 200 / 0.3)",
-                  color: "oklch(0.78 0.18 200)",
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}
-              >
-                <MessageSquare size={12} />
-                打开对话界面
-                <ExternalLink size={10} className="ml-auto" />
-              </button>
-              <button
-                onClick={handleRestart}
-                disabled={restarting}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-sm transition-all duration-150"
-                style={{
-                  background: "oklch(0.62 0.22 25 / 0.1)",
-                  border: "1px solid oklch(0.62 0.22 25 / 0.3)",
-                  color: "oklch(0.62 0.22 25)",
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}
-              >
-                <RefreshCw size={12} className={restarting ? "animate-spin" : ""} />
-                {restarting ? "重启中..." : "重启 Bot"}
-              </button>
-              <Link href="/setup">
-                <button
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-sm transition-all duration-150"
-                  style={{
-                    background: "transparent",
-                    border: "1px solid oklch(0.28 0.03 230)",
-                    color: "oklch(0.52 0.05 215)",
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}
-                >
-                  <Settings size={12} />
-                  配置 API Keys
-                </button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 实时状态摘要 */}
-      <div className="panel-card p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div
-            className="text-xs font-medium uppercase tracking-widest"
-            style={{ color: "oklch(0.52 0.05 215)", fontFamily: "'JetBrains Mono', monospace" }}
-          >
-            LIVE STATUS SUMMARY
-          </div>
-          <Activity size={14} style={{ color: "oklch(0.52 0.05 215)" }} />
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            {
-              label: "Bot 心跳",
-              value: botLoading ? "检测中..." : isOnline ? "正常" : "异常",
-              color: botLoading ? "oklch(0.52 0.05 215)" : isOnline ? "oklch(0.82 0.22 140)" : "oklch(0.62 0.22 25)",
-              sub: botLoading ? "" : isOnline ? "Telegram API 可达" : (botStatus as { error?: string })?.error ?? "无法连接",
-            },
-            {
-              label: "今日 Tokens",
-              value: statsLoading ? "加载中" : todayTokens.toLocaleString(),
-              color: "oklch(0.78 0.18 200)",
-              sub: todayCostCents > 0 ? `≈ $${(todayCostCents / 100).toFixed(4)}` : "暂无消耗",
-            },
-            {
-              label: "数据同步",
-              value: usageData?.synced ? "已同步" : "本地",
-              color: usageData?.synced ? "oklch(0.82 0.22 140)" : "oklch(0.52 0.05 215)",
-              sub: usageData?.synced ? "来自 OpenAI Usage API" : "配置 API Key 后自动同步",
-            },
-            {
-              label: "活跃模型",
-              value: botConfig?.activeModel ?? "gpt-4o",
-              color: "oklch(0.72 0.18 280)",
-              sub: botConfig?.botName ?? "ClawDBot",
-            },
-          ].map((item) => (
-            <div key={item.label}>
-              <div
-                className="text-xs mb-1"
-                style={{ color: "oklch(0.45 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                {item.label}
-              </div>
-              <div
-                className="text-sm font-semibold"
-                style={{ color: item.color, fontFamily: "'Space Mono', monospace" }}
-              >
-                {item.value}
-              </div>
-              <div className="text-xs mt-0.5 truncate" style={{ color: "oklch(0.38 0.04 220)" }}>
-                {item.sub}
-              </div>
-            </div>
-          ))}
         </div>
       </div>
     </div>

@@ -16,3 +16,16 @@
 - [x] 前端：设置页面（填写 Bot Token / OpenAI API Key，通过 saveConfig 接口保存）
 - [x] 数据库 schema 更新（bot_configs + token_usage 表）
 - [x] vitest 单元测试（13 个测试全部通过）
+
+## OpenClaw 对齐重构（v2）
+
+- [x] 调研 OpenClaw.ai 产品架构、RWA JSON 结构、Gateway API
+- [x] 数据库 schema 重构（openclaw_configs + memory_entries 表）
+- [x] 后端 dashboard router 重构（getConfig/saveConfig/saveModels/saveSkills/saveSoul/gatewayStatus/tokenUsage/todayStats/Memory CRUD）
+- [x] Layout 重构（对齐 OpenClaw 模块：驾驶舱/灵魂&记忆/技能商店/模型配置/安装向导）
+- [x] Dashboard 重构（Gateway 心跳/模型显示/Token 图表/活动日志）
+- [x] SoulEditor 重构（SOUL.md 编辑器 + 记忆卡片 CRUD）
+- [x] SkillStore 重构（对齐 OpenClaw Skills 配置，接入真实 API）
+- [x] Models 页面新增（模型配对 + API Key 加密保险箱）
+- [x] SetupWizard 重构（Gateway URL + Token + 模型 + 人格三步引导）
+- [x] vitest 单元测试（22 个测试全部通过）

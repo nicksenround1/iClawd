@@ -1,11 +1,21 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import {
+  InsertMemoryEntry,
+  InsertOpenclawConfig,
+  InsertTokenUsage,
+  InsertUser,
+  MemoryEntry,
+  OpenclawConfig,
+  memoryEntries,
+  openclawConfigs,
+  tokenUsage,
+  users,
+} from "../drizzle/schema";
+import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -18,10 +28,10 @@ export async function getDb() {
   return _db;
 }
 
+// ─── Users ────────────────────────────────────────────────────────────────────
+
 export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
+  if (!user.openId) throw new Error("User openId is required for upsert");
 
   const db = await getDb();
   if (!db) {
@@ -30,9 +40,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
 
   try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
+    const values: InsertUser = { openId: user.openId };
     const updateSet: Record<string, unknown> = {};
 
     const textFields = ["name", "email", "loginMethod"] as const;
@@ -56,21 +64,14 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       values.role = user.role;
       updateSet.role = user.role;
     } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
+      values.role = "admin";
+      updateSet.role = "admin";
     }
 
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
+    if (!values.lastSignedIn) values.lastSignedIn = new Date();
+    if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
 
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
+    await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -79,45 +80,60 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
+  if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// ─── OpenClaw Config ──────────────────────────────────────────────────────────
 
-// ─── Bot Configs ──────────────────────────────────────────────────────────────
-import { and, desc, gte } from "drizzle-orm";
-import { botConfigs, tokenUsage, type BotConfig, type InsertBotConfig, type InsertTokenUsage } from "../drizzle/schema";
+const DEFAULT_CONFIG: Omit<InsertOpenclawConfig, "userId"> = {
+  gatewayUrl: "ws://localhost:18789",
+  gatewayToken: null,
+  botName: "ClawDBot",
+  botEmoji: "🦞",
+  botVibe: "helpful and concise",
+  botCreature: "AI assistant",
+  channelsJson: JSON.stringify({ telegram: { enabled: false }, whatsapp: { enabled: false } }),
+  modelsJson: JSON.stringify({
+    primary: "anthropic/claude-opus-4-5",
+    fallbacks: ["openai/gpt-4o-mini"],
+    providers: {},
+    env: {},
+  }),
+  skillsJson: JSON.stringify({ entries: {} }),
+  soulMd: "# Soul\n\nI am a helpful AI assistant.",
+  activeModel: "anthropic/claude-opus-4-5",
+};
 
-export async function getBotConfig(userId: number): Promise<BotConfig | undefined> {
+export async function getOpenclawConfig(userId: number): Promise<OpenclawConfig | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(botConfigs).where(eq(botConfigs.userId, userId)).limit(1);
+  const result = await db.select().from(openclawConfigs).where(eq(openclawConfigs.userId, userId)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
-export async function upsertBotConfig(data: InsertBotConfig): Promise<void> {
+export async function upsertOpenclawConfig(
+  data: Partial<InsertOpenclawConfig> & { userId: number }
+): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const existing = await getBotConfig(data.userId);
+  const existing = await getOpenclawConfig(data.userId);
   if (existing) {
-    const updateSet: Partial<InsertBotConfig> = {};
-    if (data.botName !== undefined) updateSet.botName = data.botName;
-    if (data.telegramToken !== undefined) updateSet.telegramToken = data.telegramToken;
-    if (data.openaiApiKey !== undefined) updateSet.openaiApiKey = data.openaiApiKey;
-    if (data.anthropicApiKey !== undefined) updateSet.anthropicApiKey = data.anthropicApiKey;
-    if (data.activeModel !== undefined) updateSet.activeModel = data.activeModel;
-    if (data.personalityTags !== undefined) updateSet.personalityTags = data.personalityTags;
-    await db.update(botConfigs).set(updateSet).where(eq(botConfigs.userId, data.userId));
+    const updateSet: Record<string, unknown> = {};
+    const fields = [
+      "gatewayUrl", "gatewayToken", "botName", "botEmoji", "botVibe", "botCreature",
+      "channelsJson", "modelsJson", "skillsJson", "soulMd", "activeModel",
+    ] as const;
+    for (const f of fields) {
+      if (data[f] !== undefined) updateSet[f] = data[f];
+    }
+    if (Object.keys(updateSet).length > 0) {
+      await db.update(openclawConfigs).set(updateSet).where(eq(openclawConfigs.userId, data.userId));
+    }
   } else {
-    await db.insert(botConfigs).values(data);
+    await db.insert(openclawConfigs).values({ ...DEFAULT_CONFIG, ...data });
   }
 }
 
@@ -133,12 +149,11 @@ export async function getTokenUsageLast24h(userId: number) {
   const db = await getDb();
   if (!db) return [];
   const since = Date.now() - 24 * 60 * 60 * 1000;
-  const rows = await db
+  return db
     .select()
     .from(tokenUsage)
     .where(and(eq(tokenUsage.userId, userId), gte(tokenUsage.hourBucket, since)))
     .orderBy(desc(tokenUsage.hourBucket));
-  return rows;
 }
 
 export async function getTodayTokenTotal(userId: number) {
@@ -150,7 +165,45 @@ export async function getTodayTokenTotal(userId: number) {
     .select()
     .from(tokenUsage)
     .where(and(eq(tokenUsage.userId, userId), gte(tokenUsage.hourBucket, startOfDay.getTime())));
-  const totalTokens = rows.reduce((sum, r) => sum + r.totalTokens, 0);
-  const costCents = rows.reduce((sum, r) => sum + r.costCents, 0);
-  return { totalTokens, costCents };
+  return {
+    totalTokens: rows.reduce((s, r) => s + r.totalTokens, 0),
+    costCents: rows.reduce((s, r) => s + r.costCents, 0),
+  };
+}
+
+// ─── Memory Entries ───────────────────────────────────────────────────────────
+
+export async function getMemoryEntries(userId: number): Promise<MemoryEntry[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(memoryEntries)
+    .where(eq(memoryEntries.userId, userId))
+    .orderBy(desc(memoryEntries.isPinned), desc(memoryEntries.updatedAt));
+}
+
+export async function createMemoryEntry(data: InsertMemoryEntry): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(memoryEntries).values(data);
+}
+
+export async function updateMemoryEntry(
+  id: number,
+  userId: number,
+  updates: Partial<Pick<InsertMemoryEntry, "title" | "content" | "isPinned" | "category">>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(memoryEntries)
+    .set(updates)
+    .where(and(eq(memoryEntries.id, id), eq(memoryEntries.userId, userId)));
+}
+
+export async function deleteMemoryEntry(id: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(memoryEntries).where(and(eq(memoryEntries.id, id), eq(memoryEntries.userId, userId)));
 }

@@ -9,9 +9,10 @@ import Dashboard from "./pages/Dashboard";
 import SoulEditor from "./pages/SoulEditor";
 import SkillStore from "./pages/SkillStore";
 import SetupWizard from "./pages/SetupWizard";
+import Models from "./pages/Models";
 import Layout from "./components/Layout";
+
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
       <Route path={"/"} component={Home} />
@@ -28,6 +29,11 @@ function Router() {
       <Route path={"/skills"}>
         <Layout>
           <SkillStore />
+        </Layout>
+      </Route>
+      <Route path={"/models"}>
+        <Layout>
+          <Models />
         </Layout>
       </Route>
       <Route path={"/setup"}>
