@@ -167,7 +167,7 @@ brew install node`} />
 
       <Step num={2} title="下载 iClawd">
         <p className="text-sm mb-2">克隆仓库到本地：</p>
-        <CodeBlock label="Terminal" code={`git clone https://github.com/openclaw/iclawd.git
+        <CodeBlock label="Terminal" code={`git clone https://github.com/nicksenround1/iClawd.git
 cd iclawd`} />
       </Step>
 
@@ -228,7 +228,7 @@ function WindowsContent() {
 
       <Step num={2} title="下载 iClawd">
         <p className="text-sm mb-2">在 PowerShell 中执行：</p>
-        <CodeBlock label="PowerShell" code={`git clone https://github.com/openclaw/iclawd.git
+        <CodeBlock label="PowerShell" code={`git clone https://github.com/nicksenround1/iClawd.git
 cd iclawd`} />
         <p className="text-sm">或直接从 GitHub 下载 ZIP 压缩包并解压。</p>
       </Step>
@@ -277,7 +277,7 @@ nvm use 22`} />
       </Step>
 
       <Step num={2} title="克隆并安装">
-        <CodeBlock label="Bash" code={`git clone https://github.com/openclaw/iclawd.git
+        <CodeBlock label="Bash" code={`git clone https://github.com/nicksenround1/iClawd.git
 cd iclawd
 npm install`} />
       </Step>
@@ -327,7 +327,7 @@ docker compose version    # Docker Compose v2+`} />
 
 services:
   iclawd:
-    image: ghcr.io/openclaw/iclawd:latest
+    image: ghcr.io/nicksenround1/iclawd:latest
     container_name: iclawd
     ports:
       - "3000:3000"

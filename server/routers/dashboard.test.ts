@@ -310,6 +310,7 @@ describe("dashboard memory CRUD", () => {
     vi.mocked(db.updateMemoryEntry).mockResolvedValue(undefined);
     const caller = appRouter.createCaller(makeCtx(42));
     const result = await caller.dashboard.updateMemory({ id: 1, isPinned: true });
+    // updateMemory returns { success: true }, not { memory: ... }
     expect(result.success).toBe(true);
     expect(db.updateMemoryEntry).toHaveBeenCalledWith(
       1,
@@ -323,6 +324,7 @@ describe("dashboard memory CRUD", () => {
     const caller = appRouter.createCaller(makeCtx(42));
     const result = await caller.dashboard.deleteMemory({ id: 1 });
     expect(result.success).toBe(true);
+    // deleteMemoryEntry(id, userId) — id first, userId second
     expect(db.deleteMemoryEntry).toHaveBeenCalledWith(1, 42);
   });
 });

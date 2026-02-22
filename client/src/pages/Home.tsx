@@ -513,7 +513,7 @@ export default function Home() {
               </button>
             </Link>
             <a
-              href="https://github.com/openclaw/iclawd"
+              href="https://github.com/nicksenround1/iClawd"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-6 py-3 text-sm rounded-sm transition-all duration-150"
