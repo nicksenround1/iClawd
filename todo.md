@@ -54,3 +54,9 @@
 - [x] 修复 updateMemory 测试：期望值与实际返回值 {success: true} 对齐
 - [x] 修复 deleteMemory 测试：deleteMemoryEntry(id, userId) 参数顺序修正
 - [x] 22 个单元测试全部通过
+
+## 本地安装 Bug 修复（v3.3）
+
+- [x] 移除 @builder.io/vite-plugin-jsx-loc（与 Vite 7 不兼容，导致 npm install 失败）
+- [x] 添加 start:local 脚本（用户按 README 执行 npm run start:local 报错）
+- [x] 从 vite.config.ts 中移除 jsxLocPlugin 导入和使用
