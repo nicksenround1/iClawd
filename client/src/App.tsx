@@ -10,6 +10,7 @@ import SoulEditor from "./pages/SoulEditor";
 import SkillStore from "./pages/SkillStore";
 import SetupWizard from "./pages/SetupWizard";
 import Models from "./pages/Models";
+import Install from "./pages/Install";
 import Layout from "./components/Layout";
 
 function Router() {
@@ -39,6 +40,7 @@ function Router() {
       <Route path={"/setup"}>
         <SetupWizard />
       </Route>
+      <Route path={"/install"} component={Install} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

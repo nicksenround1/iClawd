@@ -20,6 +20,8 @@ import {
   ArrowRight,
   Github,
   Star,
+  Download,
+  Monitor,
 } from "lucide-react";
 
 const features = [
@@ -157,18 +159,26 @@ export default function Home() {
               驾驶舱
             </button>
           </Link>
-          <Link href="/setup">
+          <Link href="/install">
+            <button
+              className="text-sm transition-colors"
+              style={{ color: "oklch(0.52 0.05 215)" }}
+            >
+              安装指南
+            </button>
+          </Link>
+          <Link href="/install">
             <button
               className="flex items-center gap-2 px-4 py-2 text-sm rounded-sm transition-all duration-150"
               style={{
-                background: "oklch(0.78 0.18 200 / 0.15)",
-                border: "1px solid oklch(0.78 0.18 200 / 0.5)",
-                color: "oklch(0.78 0.18 200)",
+                background: "oklch(0.82 0.22 140 / 0.15)",
+                border: "1px solid oklch(0.82 0.22 140 / 0.5)",
+                color: "oklch(0.82 0.22 140)",
                 fontFamily: "'JetBrains Mono', monospace",
               }}
             >
-              快速开始
-              <ChevronRight size={14} />
+              <Download size={14} />
+              本地安装
             </button>
           </Link>
         </div>
@@ -238,40 +248,46 @@ export default function Home() {
               ClawDBot 的图形化管理界面。告别 JSON 配置地狱，用滑块、开关和卡片驾驭你的 AI Agent。
             </p>
 
-            {/* CTA 按钮 */}
-            <div className="flex items-center gap-4">
-              <Link href="/setup">
-                <button
-                  className="flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-sm transition-all duration-200 hover:scale-105"
-                  style={{
-                    background: "linear-gradient(135deg, oklch(0.78 0.18 200 / 0.2), oklch(0.72 0.18 280 / 0.15))",
-                    border: "1px solid oklch(0.78 0.18 200 / 0.6)",
-                    color: "oklch(0.78 0.18 200)",
-                    fontFamily: "'JetBrains Mono', monospace",
-                    letterSpacing: "0.08em",
-                    boxShadow: "0 0 20px oklch(0.78 0.18 200 / 0.2)",
-                  }}
-                >
-                  <Terminal size={16} />
-                  立即开始配置
-                  <ArrowRight size={14} />
-                </button>
-              </Link>
-              <Link href="/dashboard">
-                <button
-                  className="flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-sm transition-all duration-150"
-                  style={{
-                    background: "transparent",
-                    border: "1px solid oklch(0.28 0.03 230)",
-                    color: "oklch(0.52 0.05 215)",
-                    fontFamily: "'JetBrains Mono', monospace",
-                    letterSpacing: "0.08em",
-                  }}
-                >
-                  查看演示
-                  <ChevronRight size={14} />
-                </button>
-              </Link>
+            {/* CTA 按鈕 */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-4">
+                <Link href="/install">
+                  <button
+                    className="flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-sm transition-all duration-200 hover:scale-105"
+                    style={{
+                      background: "linear-gradient(135deg, oklch(0.82 0.22 140 / 0.2), oklch(0.78 0.18 200 / 0.15))",
+                      border: "1px solid oklch(0.82 0.22 140 / 0.6)",
+                      color: "oklch(0.82 0.22 140)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      letterSpacing: "0.08em",
+                      boxShadow: "0 0 20px oklch(0.82 0.22 140 / 0.2)",
+                    }}
+                  >
+                    <Download size={16} />
+                    本地安装（推荐）
+                    <ArrowRight size={14} />
+                  </button>
+                </Link>
+                <Link href="/dashboard">
+                  <button
+                    className="flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-sm transition-all duration-150"
+                    style={{
+                      background: "transparent",
+                      border: "1px solid oklch(0.28 0.03 230)",
+                      color: "oklch(0.52 0.05 215)",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      letterSpacing: "0.08em",
+                    }}
+                  >
+                    <Monitor size={14} />
+                    在线演示
+                    <ChevronRight size={14} />
+                  </button>
+                </Link>
+              </div>
+              <p className="text-xs" style={{ color: "oklch(0.42 0.04 220)", fontFamily: "'JetBrains Mono', monospace" }}>
+                本地安装可直接连接 localhost Gateway · 无跨域限制
+              </p>
             </div>
 
             {/* 统计数据 */}
@@ -480,24 +496,24 @@ export default function Home() {
             三步完成配置，立即开始你的 AI 驾驶舱之旅
           </p>
           <div className="flex items-center justify-center gap-4">
-            <Link href="/setup">
+            <Link href="/install">
               <button
                 className="flex items-center gap-2 px-8 py-3 text-sm font-medium rounded-sm transition-all duration-200 hover:scale-105"
                 style={{
-                  background: "linear-gradient(135deg, oklch(0.78 0.18 200 / 0.2), oklch(0.72 0.18 280 / 0.15))",
-                  border: "1px solid oklch(0.78 0.18 200 / 0.6)",
-                  color: "oklch(0.78 0.18 200)",
+                  background: "linear-gradient(135deg, oklch(0.82 0.22 140 / 0.2), oklch(0.78 0.18 200 / 0.15))",
+                  border: "1px solid oklch(0.82 0.22 140 / 0.6)",
+                  color: "oklch(0.82 0.22 140)",
                   fontFamily: "'JetBrains Mono', monospace",
                   letterSpacing: "0.08em",
-                  boxShadow: "0 0 30px oklch(0.78 0.18 200 / 0.2)",
+                  boxShadow: "0 0 30px oklch(0.82 0.22 140 / 0.2)",
                 }}
               >
-                <Terminal size={16} />
-                开始配置向导
+                <Download size={16} />
+                下载本地安装
               </button>
             </Link>
             <a
-              href="https://github.com"
+              href="https://github.com/openclaw/iclawd"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-6 py-3 text-sm rounded-sm transition-all duration-150"

@@ -34,3 +34,12 @@
 
 - [x] 修复 SetupWizard Gateway 连接测试：改为 no-cors 模式浏览器端直接 fetch，支持本地 localhost Gateway
 - [x] 修复 Dashboard + Layout 的 Gateway 心跳检测：全部改为浏览器端直接 ping，删除服务端代理
+
+## 本地部署改造（v3）
+
+- [x] 首页改造：突出"本地安装"为主 CTA，云端网站定位为产品介绍页
+- [x] 新增 /install 安装指南页面（macOS/Windows/Linux 三平台步骤）
+- [ ] 提供 start.sh（Mac/Linux）和 start.bat（Windows）一键启动脚本
+- [ ] 提供 docker-compose.yml 一键 Docker 部署方案
+- [ ] 首页导航更新：添加"安装指南"入口
+- [ ] 驾驶舱页面：当检测到运行在 localhost 时显示"本地模式"标识
