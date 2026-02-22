@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1771762899460,
+      "tag": "0000_futuristic_grim_reaper",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1771762969620,
+      "tag": "0001_petite_maggott",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1771762985392,
+      "tag": "0002_sturdy_old_lace",
+      "breakpoints": true
+    }
+  ]
+}

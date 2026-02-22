@@ -7,6 +7,7 @@
 
 import { Link } from "wouter";
 import { useState, useEffect } from "react";
+import { useAuth } from "@/_core/hooks/useAuth";
 import {
   LayoutDashboard,
   Brain,
@@ -98,6 +99,10 @@ function TypewriterText({ text, delay = 0 }: { text: string; delay?: number }) {
 }
 
 export default function Home() {
+  // The userAuth hooks provides authentication state
+  // To implement login/logout functionality, simply call logout() or redirect to getLoginUrl()
+  const { } = useAuth(); // auth state available if needed
+
   const [statsVisible, setStatsVisible] = useState(false);
 
   useEffect(() => {

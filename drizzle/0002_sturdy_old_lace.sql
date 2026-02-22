@@ -1,0 +1,1 @@
+ALTER TABLE `bot_configs` MODIFY COLUMN `personalityTags` varchar(512) DEFAULT '["direct","logical"]';
