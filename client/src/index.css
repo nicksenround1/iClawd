@@ -1,3 +1,22 @@
+/*
+ * iClawd - 工业终端 (Industrial Terminal) 设计风格
+ * 
+ * 设计哲学：军事HUD + 工业控制终端美学
+ * 核心原则：功能至上、信息分级、状态可见、边框即结构
+ * 
+ * 色彩系统：
+ *   背景：#080c10（深蓝黑）
+ *   面板：#0d1520（深蓝）
+ *   主色：#00d4ff（亮青色 - 系统激活）
+ *   成功：#39ff14（霓虹绿 - 正常运行）
+ *   警告：#ffb800（琥珀色 - 注意）
+ *   危险：#ff3333（红色 - 错误）
+ *   文字主：#e0f0ff（淡蓝白）
+ *   文字次：#6b8fa8（灰蓝）
+ * 
+ * 字体：Space Mono（标题）+ IBM Plex Sans（正文）+ JetBrains Mono（数据）
+ */
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -40,77 +59,62 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  
+  /* iClawd 自定义颜色 */
+  --color-cyan-glow: var(--cyan-glow);
+  --color-neon-green: var(--neon-green);
+  --color-amber-warn: var(--amber-warn);
+  --color-panel-bg: var(--panel-bg);
+  --color-panel-border: var(--panel-border);
 }
 
 :root {
-  --primary: var(--color-blue-700);
-  --primary-foreground: var(--color-blue-50);
-  --sidebar-primary: var(--color-blue-600);
-  --sidebar-primary-foreground: var(--color-blue-50);
-  --chart-1: var(--color-blue-300);
-  --chart-2: var(--color-blue-500);
-  --chart-3: var(--color-blue-600);
-  --chart-4: var(--color-blue-700);
-  --chart-5: var(--color-blue-800);
-  --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.235 0.015 65);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.235 0.015 65);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.235 0.015 65);
-  --secondary: oklch(0.98 0.001 286.375);
-  --secondary-foreground: oklch(0.4 0.015 65);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.141 0.005 285.823);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.623 0.214 259.815);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.235 0.015 65);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.623 0.214 259.815);
-}
-
-.dark {
-  --primary: var(--color-blue-700);
-  --primary-foreground: var(--color-blue-50);
-  --sidebar-primary: var(--color-blue-500);
-  --sidebar-primary-foreground: var(--color-blue-50);
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.85 0.005 65);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.85 0.005 65);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.85 0.005 65);
-  --secondary: oklch(0.24 0.006 286.033);
-  --secondary-foreground: oklch(0.7 0.005 65);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground:  oklch(0.92 0.005 65);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.488 0.243 264.376);
-  --chart-1: var(--color-blue-300);
-  --chart-2: var(--color-blue-500);
-  --chart-3: var(--color-blue-600);
-  --chart-4: var(--color-blue-700);
-  --chart-5: var(--color-blue-800);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.85 0.005 65);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground:  oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.488 0.243 264.376);
+  --radius: 0.25rem;
+  
+  /* iClawd 工业终端色彩系统 */
+  --background: oklch(0.085 0.015 240);
+  --foreground: oklch(0.92 0.02 210);
+  --card: oklch(0.11 0.018 235);
+  --card-foreground: oklch(0.92 0.02 210);
+  --popover: oklch(0.11 0.018 235);
+  --popover-foreground: oklch(0.92 0.02 210);
+  --primary: oklch(0.78 0.18 200);
+  --primary-foreground: oklch(0.08 0.015 240);
+  --secondary: oklch(0.15 0.02 235);
+  --secondary-foreground: oklch(0.75 0.04 210);
+  --muted: oklch(0.14 0.015 235);
+  --muted-foreground: oklch(0.52 0.05 215);
+  --accent: oklch(0.78 0.18 200);
+  --accent-foreground: oklch(0.08 0.015 240);
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.22 0.03 230);
+  --input: oklch(0.18 0.025 235);
+  --ring: oklch(0.78 0.18 200);
+  
+  /* 图表颜色 */
+  --chart-1: oklch(0.78 0.18 200);
+  --chart-2: oklch(0.72 0.22 140);
+  --chart-3: oklch(0.72 0.18 65);
+  --chart-4: oklch(0.62 0.22 25);
+  --chart-5: oklch(0.65 0.2 280);
+  
+  /* 侧边栏 */
+  --sidebar: oklch(0.09 0.016 238);
+  --sidebar-foreground: oklch(0.92 0.02 210);
+  --sidebar-primary: oklch(0.78 0.18 200);
+  --sidebar-primary-foreground: oklch(0.08 0.015 240);
+  --sidebar-accent: oklch(0.15 0.02 235);
+  --sidebar-accent-foreground: oklch(0.92 0.02 210);
+  --sidebar-border: oklch(0.18 0.025 235);
+  --sidebar-ring: oklch(0.78 0.18 200);
+  
+  /* iClawd 专属变量 */
+  --cyan-glow: oklch(0.78 0.18 200);
+  --neon-green: oklch(0.82 0.22 140);
+  --amber-warn: oklch(0.78 0.18 65);
+  --panel-bg: oklch(0.11 0.018 235);
+  --panel-border: oklch(0.22 0.03 230);
 }
 
 @layer base {
@@ -119,6 +123,18 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1, h2, h3 {
+    font-family: 'Space Mono', monospace;
+    letter-spacing: -0.02em;
+  }
+  code, .mono, .data-value {
+    font-family: 'JetBrains Mono', monospace;
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -134,24 +150,11 @@
 }
 
 @layer components {
-  /**
-   * Custom container utility that centers content and adds responsive padding.
-   *
-   * This overrides Tailwind's default container behavior to:
-   * - Auto-center content (mx-auto)
-   * - Add responsive horizontal padding
-   * - Set max-width for large screens
-   *
-   * Usage: <div className="container">...</div>
-   *
-   * For custom widths, use max-w-* utilities directly:
-   * <div className="max-w-6xl mx-auto px-4">...</div>
-   */
   .container {
     width: 100%;
     margin-left: auto;
     margin-right: auto;
-    padding-left: 1rem; /* 16px - mobile padding */
+    padding-left: 1rem;
     padding-right: 1rem;
   }
 
@@ -162,16 +165,239 @@
 
   @media (min-width: 640px) {
     .container {
-      padding-left: 1.5rem; /* 24px - tablet padding */
+      padding-left: 1.5rem;
       padding-right: 1.5rem;
     }
   }
 
   @media (min-width: 1024px) {
     .container {
-      padding-left: 2rem; /* 32px - desktop padding */
+      padding-left: 2rem;
       padding-right: 2rem;
-      max-width: 1280px; /* Standard content width */
+      max-width: 1440px;
     }
+  }
+  
+  /* iClawd 工业终端组件样式 */
+  
+  /* 切角卡片 */
+  .panel-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    position: relative;
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  
+  .panel-card:hover {
+    border-color: oklch(0.78 0.18 200 / 0.6);
+    box-shadow: 0 0 20px oklch(0.78 0.18 200 / 0.1), inset 0 0 20px oklch(0.78 0.18 200 / 0.03);
+  }
+  
+  .panel-card-active {
+    border-color: oklch(0.78 0.18 200 / 0.8);
+    box-shadow: 0 0 30px oklch(0.78 0.18 200 / 0.15), inset 0 0 30px oklch(0.78 0.18 200 / 0.05);
+  }
+  
+  /* 呼吸灯 */
+  .heartbeat-online {
+    animation: heartbeat-pulse 2.5s ease-in-out infinite;
+  }
+  
+  .heartbeat-offline {
+    animation: none;
+    opacity: 0.3;
+  }
+  
+  @keyframes heartbeat-pulse {
+    0%, 100% { 
+      opacity: 0.6; 
+      transform: scale(0.85);
+      box-shadow: 0 0 4px oklch(0.82 0.22 140 / 0.4);
+    }
+    50% { 
+      opacity: 1; 
+      transform: scale(1.15);
+      box-shadow: 0 0 12px oklch(0.82 0.22 140 / 0.8), 0 0 24px oklch(0.82 0.22 140 / 0.4);
+    }
+  }
+  
+  /* 扫描线效果 */
+  .scanline-bg {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .scanline-bg::after {
+    content: '';
+    position: absolute;
+    top: -100%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(transparent, oklch(0.78 0.18 200 / 0.15), transparent);
+    animation: scanline 4s linear infinite;
+    pointer-events: none;
+  }
+  
+  @keyframes scanline {
+    0% { top: -2px; }
+    100% { top: 100%; }
+  }
+  
+  /* 数字滚动动画 */
+  .counter-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  /* 进度条光泽 */
+  .progress-glow {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .progress-glow::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.3), transparent);
+    animation: progress-shine 2s ease-in-out infinite;
+  }
+  
+  @keyframes progress-shine {
+    0% { left: -100%; }
+    100% { left: 200%; }
+  }
+  
+  /* 边框激活效果 */
+  .border-active {
+    border-color: oklch(0.78 0.18 200);
+    box-shadow: 0 0 0 1px oklch(0.78 0.18 200 / 0.3);
+  }
+  
+  /* 标签样式 */
+  .tag-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border: 1px solid;
+    clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+    transition: all 0.15s ease;
+  }
+  
+  /* 状态指示器 */
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  
+  /* 页面入场动画 */
+  .fade-in-up {
+    animation: fadeInUp 0.4s ease-out forwards;
+  }
+  
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  /* 延迟动画 */
+  .delay-100 { animation-delay: 0.1s; }
+  .delay-200 { animation-delay: 0.2s; }
+  .delay-300 { animation-delay: 0.3s; }
+  .delay-400 { animation-delay: 0.4s; }
+  
+  /* 霓虹文字 */
+  .neon-text {
+    color: oklch(0.78 0.18 200);
+    text-shadow: 0 0 10px oklch(0.78 0.18 200 / 0.5), 0 0 20px oklch(0.78 0.18 200 / 0.3);
+  }
+  
+  .neon-green-text {
+    color: oklch(0.82 0.22 140);
+    text-shadow: 0 0 10px oklch(0.82 0.22 140 / 0.5);
+  }
+  
+  /* 网格背景 */
+  .grid-bg {
+    background-image: 
+      linear-gradient(oklch(0.78 0.18 200 / 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, oklch(0.78 0.18 200 / 0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  
+  /* 技能卡片 */
+  .skill-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .skill-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, oklch(0.78 0.18 200 / 0.6), transparent);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+  }
+  
+  .skill-card:hover::before {
+    transform: scaleX(1);
+  }
+  
+  .skill-card:hover {
+    border-color: oklch(0.78 0.18 200 / 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px oklch(0 0 0 / 0.4), 0 0 16px oklch(0.78 0.18 200 / 0.1);
+  }
+  
+  /* 安装按钮 */
+  .install-btn {
+    background: transparent;
+    border: 1px solid oklch(0.78 0.18 200 / 0.6);
+    color: oklch(0.78 0.18 200);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%);
+    transition: all 0.15s ease;
+  }
+  
+  .install-btn:hover {
+    background: oklch(0.78 0.18 200 / 0.15);
+    border-color: oklch(0.78 0.18 200);
+    box-shadow: 0 0 12px oklch(0.78 0.18 200 / 0.3);
+  }
+  
+  .install-btn.installed {
+    background: oklch(0.82 0.22 140 / 0.15);
+    border-color: oklch(0.82 0.22 140 / 0.6);
+    color: oklch(0.82 0.22 140);
   }
 }
